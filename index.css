@@ -86,3 +86,212 @@ body {
 .filters-btn:hover {
   background-color: #f2f2f2;
 }
+/* ── Toolbar : bouton d'ajout + zone droite ── */
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.add-btn {
+  display: inline-flex;
+  align-items: center;
+  background-color: #4b1d5c;
+  color: #ffffff;
+  border: none;
+  border-radius: 24px;
+  padding: 10px 20px;
+  font-size: 15px;
+  font-weight: bold;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  white-space: nowrap;
+}
+
+.add-btn:hover {
+  background-color: #6a2a80;
+}
+
+/* ── Panneau de filtres ── */
+.filters-panel {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  background-color: #ffffff;
+  border: 1px solid #4b1d5c;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-top: 14px;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 200px;
+}
+
+.filter-group label {
+  font-size: 13px;
+  font-weight: bold;
+  color: #4b1d5c;
+}
+
+.filter-group select {
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-family: inherit;
+  background-color: #f7f7f7;
+  color: #1a1a1a;
+}
+
+.filter-group select:focus {
+  outline: none;
+  border-color: #4b1d5c;
+  box-shadow: 0 0 0 3px rgba(75, 29, 92, 0.15);
+}
+
+/* ── Grille des stagiaires ── */
+.stagiaire-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.stagiaire-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background-color: #ffffff;
+  border: 1px solid #e0d9e3;
+  border-radius: 14px;
+  padding: 18px 20px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+
+.stagiaire-card:hover {
+  box-shadow: 0 6px 18px rgba(75, 29, 92, 0.14);
+  transform: translateY(-2px);
+}
+
+.stagiaire-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4b1d5c, #7c3b9a);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.stagiaire-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stagiaire-name {
+  font-size: 17px;
+  font-weight: bold;
+  color: #1a1a1a;
+}
+
+.stagiaire-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: bold;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.tag-classe {
+  background-color: #f0e6f5;
+  color: #4b1d5c;
+}
+
+.tag-etablissement {
+  background-color: #e9e9e9;
+  color: #333333;
+}
+
+/* ── Barre de progression des évaluations ── */
+.stagiaire-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.progress-track {
+  width: 100%;
+  height: 8px;
+  background-color: #ececec;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #7c3b9a, #4b1d5c);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.progress-label {
+  font-size: 12px;
+  font-weight: bold;
+  color: #666666;
+}
+
+/* ── États vides ── */
+.empty-state,
+.no-results {
+  text-align: center;
+  padding: 60px 20px;
+  color: #555555;
+}
+
+.empty-state p,
+.no-results {
+  font-size: 15px;
+  margin-bottom: 16px;
+}
+
+.no-results {
+  padding: 30px 20px;
+}
+
+/* ── Responsive ── */
+@media (max-width: 640px) {
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-bar {
+    width: 100%;
+  }
+
+  .toolbar-right {
+    justify-content: space-between;
+  }
+
+  .stagiaire-grid {
+    grid-template-columns: 1fr;
+  }
+}

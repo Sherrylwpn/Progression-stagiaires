@@ -68,7 +68,8 @@ h1 {
   content: '• ';
 }
 
-.field input {
+.field input,
+.field select {
   width: 100%;
   height: 26px;
   background-color: #b8a8c8;
@@ -77,6 +78,7 @@ h1 {
   outline: none;
   padding: 0 6px;
   font-size: 0.8rem;
+  font-family: inherit;
 }
 
 /* ── Grille compétences ── */
@@ -104,7 +106,7 @@ h1 {
   line-height: 1.2;
 }
 
-    /* ── Stars ── */
+/* ── Stars ── */
 .stars {
   display: flex;
   justify-content: center;
@@ -120,9 +122,11 @@ h1 {
   transition: color 0.15s;
   -webkit-text-stroke: 1px #555;
 }
+
 .star.filled {
   color: #555;
 }
+
 .star:hover,
 .star:hover ~ .star {
   color: #aaa;
@@ -146,8 +150,8 @@ h1 {
 }
 
 .skill-item-soft {
-   background-color: #d9d9d9;
-   text-align: center;
+  background-color: #d9d9d9;
+  text-align: center;
 }
 
 .skill-item-soft .skill-name {
@@ -172,4 +176,24 @@ h1 {
 
 .stars-5 .star {
   font-size: 0.95rem;
+}
+
+/* ── Bouton de soumission ── */
+.submit-btn {
+  display: block;
+  width: 100%;
+  margin-top: 18px;
+  padding: 12px;
+  background-color: #4b1d5c;
+  border: none;
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.submit-btn:hover {
+  background-color: #6a2a80;
 }

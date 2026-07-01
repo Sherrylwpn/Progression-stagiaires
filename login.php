@@ -1,5 +1,4 @@
 <?php
-session_start();
 require_once 'config.php';
 
 // Si déjà connecté → rediriger
@@ -15,32 +14,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
 
     // ── Sanitisation EN PREMIER ──
-    $email        = sanitizeEmail($_POST['email']        ?? '');
+    $nom          = trim($_POST['nom'] ?? '');
     $mot_de_passe = trim($_POST['mot_de_passe'] ?? '');
 
-    if ($email === '' || $mot_de_passe === '') {
+    if ($nom === '' || $mot_de_passe === '') {
         $erreur = "Veuillez remplir tous les champs.";
     } else {
         $pdo  = getDB();
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE email = :email LIMIT 1");
-        $stmt->execute([':email' => $email]);
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE nom = :nom LIMIT 1");
+        $stmt->execute([':nom' => $nom]);
         $utilisateur = $stmt->fetch();
 
         if ($utilisateur && password_verify($mot_de_passe, $utilisateur['mot_de_passe'])) {
             $_SESSION['user_id']   = $utilisateur['id'];
             $_SESSION['user_nom']  = $utilisateur['nom'];
-            $_SESSION['user_role'] = $utilisateur['role'];
             $_SESSION['logged_at'] = time();
 
-            // Redirection selon le rôle
-            switch ($utilisateur['role']) {
-                case 'admin':  header("Location: dashboard.php"); break;
-                case 'hôtel':  header("Location: dashboard.php"); break;
-                default:       header("Location: dashboard.php"); break;
-            }
+            header("Location: dashboard.php");
             exit;
         } else {
-            $erreur = "Email ou mot de passe incorrect.";
+            $erreur = "Nom ou mot de passe incorrect.";
         }
     }
 }
@@ -68,10 +61,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <form method="POST" action="login.php">
             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
             <div class="form-group">
-                <label for="email">Email</label>
-                <input type="email" id="email" name="email"
-                       placeholder="Entrez votre email"
-                       value="<?= htmlspecialchars($_POST['email'] ?? '') ?>"
+                <label for="nom">Nom</label>
+                <input type="text" id="nom" name="nom"
+                       placeholder="Entrez votre nom"
+                       value="<?= htmlspecialchars($_POST['nom'] ?? '') ?>"
                        required>
             </div>
 
@@ -84,11 +77,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <button type="submit" class="login-btn">Se connecter</button>
         </form>
-
-        <p style="margin-top: 15px; font-size: 14px; color: #555;">
-            Pas encore de compte ?
-            <a href="register.php" style="color: #7C3B9A;">Créer un compte</a>
-        </p>
 
         <p style="margin-top: 8px; font-size: 14px;">
             <a href="index.php" style="color: #7C3B9A;">← Retour à l'accueil</a>
