@@ -1,0 +1,88 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: Arial, sans-serif;
+}
+
+body {
+  height: 100vh;
+  background: linear-gradient(135deg, #1a0033, #7C3B9A);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.login-container {
+  background: #fff;
+  padding: 30px;
+  width: 320px;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  text-align: center;
+}
+
+.login-container h2 {
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.form-group {
+  margin-bottom: 15px;
+  text-align: left;
+}
+
+.form-group label {
+  font-size: 14px;
+  color: #555;
+  display: block; /* Le label occupe toute la largeur → input en dessous */
+}
+
+.form-group input {
+  width: 100%;
+  padding: 10px;
+  margin-top: 5px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  transition: border-color 0.3s, box-shadow 0.3s;
+  font-size: 14px;
+}
+
+.form-group input:focus {
+  border-color: #7C3B9A;
+  outline: none;
+  box-shadow: 0 0 6px rgba(124, 59, 154, 0.4);
+}
+
+.login-btn {
+  width: 100%;
+  padding: 12px;
+  background: #7C3B9A;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.3s;
+  margin-top: 5px;
+}
+
+.login-btn:hover {
+  background: #5a2a72; /* Assombrit le violet plutôt que de passer au bleu */
+}
+
+.error-msg {
+  margin-top: 15px;
+  padding: 10px 12px;
+  background: #fdecea;          /* fond rouge très clair */
+  border: 1px solid #f44336;    /* bordure rouge */
+  border-radius: 8px;
+  color: #c62828;               /* texte rouge foncé */
+  font-size: 13px;
+  text-align: left;
+}
+
+:focus-visible {
+  outline: 2px solid #7C3B9A;
+  outline-offset: 2px;
+}
