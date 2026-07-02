@@ -5,7 +5,7 @@ $pdo = getDB();
 // ── Liste des stagiaires + nombre d'évaluations déjà saisies ──
 $stagiaires = $pdo->query("
   SELECT
-    s.id_stagiaire, s.nom, s.prenom, s.classe, s.etablissement,
+    s.id_stagiaire, s.nom, s.prenom, s.classe, s.etablissement, s.date_debut, s.date_fin,
     (SELECT COUNT(*) FROM evaluation_competence_technique et WHERE et.id_stagiaire = s.id_stagiaire) AS nb_tech,
     (SELECT COUNT(*) FROM evaluation_competence_humaine  eh WHERE eh.id_stagiaire = s.id_stagiaire) AS nb_hum,
     (SELECT COUNT(*) FROM evaluation_badge               eb WHERE eb.id_stagiaire = s.id_stagiaire) AS nb_badge
@@ -24,6 +24,16 @@ $classes = array_values(array_unique(array_column($stagiaires, 'classe')));
 sort($classes);
 $etablissements = array_values(array_unique(array_column($stagiaires, 'etablissement')));
 sort($etablissements);
+
+// Années de période distinctes, déduites des date_debut réellement enregistrées en base
+$annees = [];
+foreach ($stagiaires as $s) {
+    if (!empty($s['date_debut'])) {
+        $annees[] = date('Y', strtotime($s['date_debut']));
+    }
+}
+$annees = array_values(array_unique($annees));
+rsort($annees); // les plus récentes en premier
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -43,10 +53,38 @@ sort($etablissements);
         <span class="header-user">Bonjour, <?= htmlspecialchars($_SESSION['user_nom']) ?></span>
         <a href="logout.php" class="auth-btn">Déconnexion</a>
       <?php else: ?>
-        <a href="login.php" class="auth-btn">Connexion</a>
+        <button type="button" class="auth-btn" id="loginBtn" aria-expanded="false" aria-controls="loginPopup">Connexion</button>
       <?php endif; ?>
     </nav>
   </header>
+
+  <?php if (empty($_SESSION['user_id'])): ?>
+  <!-- Popup de connexion, ancré en haut à droite -->
+  <div class="login-popup" id="loginPopup" hidden>
+    <div class="login-popup-header">
+      <h3>Connexion</h3>
+      <button type="button" class="login-popup-close" id="loginPopupClose" aria-label="Fermer">&times;</button>
+    </div>
+
+    <div class="login-popup-error" id="loginPopupError" hidden></div>
+
+    <form id="loginPopupForm">
+      <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+
+      <div class="login-popup-field">
+        <label for="loginPopupNom">Nom</label>
+        <input type="text" id="loginPopupNom" name="nom" placeholder="Entrez votre nom" required>
+      </div>
+
+      <div class="login-popup-field">
+        <label for="loginPopupMdp">Mot de passe</label>
+        <input type="password" id="loginPopupMdp" name="mot_de_passe" placeholder="Entrez votre mot de passe" required>
+      </div>
+
+      <button type="submit" class="login-popup-submit" id="loginPopupSubmit">Se connecter</button>
+    </form>
+  </div>
+  <?php endif; ?>
 
   <main class="content">
     <div class="toolbar">
@@ -59,36 +97,47 @@ sort($etablissements);
       </div>
 
       <div class="toolbar-right">
-        <button class="filters-btn" id="filtersBtn" aria-expanded="false">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-            <polygon points="2,5 22,5 14,15 14,21 10,21 10,15"></polygon>
-          </svg>
-          Filtres
-        </button>
         <?php if (isLoggedIn()): ?>
           <a href="formulaire_stagiaires.php" class="add-btn">+ Nouveau stagiaire</a>
         <?php endif; ?>
       </div>
     </div>
 
-    <div class="filters-panel" id="filtersPanel" hidden>
-      <div class="filter-group">
-        <label for="filterClasse">Classe</label>
-        <select id="filterClasse">
-          <option value="">Toutes</option>
-          <?php foreach ($classes as $c): ?>
-            <option value="<?= htmlspecialchars($c) ?>"><?= htmlspecialchars($c) ?></option>
-          <?php endforeach; ?>
-        </select>
+    <div class="filters-panel" id="filtersPanel">
+      <div class="filters-panel-title">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="2,5 22,5 14,15 14,21 10,21 10,15"></polygon>
+        </svg>
+        Filtres
       </div>
-      <div class="filter-group">
-        <label for="filterEtablissement">Établissement</label>
-        <select id="filterEtablissement">
-          <option value="">Tous</option>
-          <?php foreach ($etablissements as $e): ?>
-            <option value="<?= htmlspecialchars($e) ?>"><?= htmlspecialchars($e) ?></option>
-          <?php endforeach; ?>
-        </select>
+      <div class="filters-panel-row">
+        <div class="filter-group">
+          <label for="filterClasse">Classe</label>
+          <select id="filterClasse">
+            <option value="">Toutes</option>
+            <?php foreach ($classes as $c): ?>
+              <option value="<?= htmlspecialchars($c) ?>"><?= htmlspecialchars($c) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="filterEtablissement">Établissement</label>
+          <select id="filterEtablissement">
+            <option value="">Tous</option>
+            <?php foreach ($etablissements as $e): ?>
+              <option value="<?= htmlspecialchars($e) ?>"><?= htmlspecialchars($e) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="filterPeriode">Période</label>
+          <select id="filterPeriode">
+            <option value="">Toutes</option>
+            <?php foreach ($annees as $a): ?>
+              <option value="<?= htmlspecialchars($a) ?>"><?= htmlspecialchars($a) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -106,6 +155,7 @@ sort($etablissements);
           $initiales = mb_strtoupper(mb_substr($s['prenom'], 0, 1) . mb_substr($s['nom'], 0, 1));
           $rempli    = (int) $s['nb_tech'] + (int) $s['nb_hum'] + (int) $s['nb_badge'];
           $pct       = $totalItems > 0 ? (int) round(($rempli / $totalItems) * 100) : 0;
+          $annee     = $s['date_debut'] ? date('Y', strtotime($s['date_debut'])) : '';
         ?>
           <article
             class="stagiaire-card"
@@ -113,6 +163,7 @@ sort($etablissements);
             data-nom="<?= htmlspecialchars(mb_strtolower($s['nom'] . ' ' . $s['prenom'])) ?>"
             data-classe="<?= htmlspecialchars($s['classe']) ?>"
             data-etablissement="<?= htmlspecialchars($s['etablissement']) ?>"
+            data-annee="<?= htmlspecialchars($annee) ?>"
             tabindex="0"
             role="button"
             aria-haspopup="dialog"
@@ -162,25 +213,11 @@ sort($etablissements);
 
   <script>
     const searchInput = document.getElementById('searchInput');
-    const filtersBtn = document.getElementById('filtersBtn');
-    const filtersPanel = document.getElementById('filtersPanel');
     const filterClasse = document.getElementById('filterClasse');
     const filterEtablissement = document.getElementById('filterEtablissement');
+    const filterPeriode = document.getElementById('filterPeriode');
     const grid = document.getElementById('stagiaireGrid');
     const noResults = document.getElementById('noResults');
-
-    if (filtersBtn && filtersPanel) {
-      filtersBtn.addEventListener('click', () => {
-        const isHidden = filtersPanel.hasAttribute('hidden');
-        if (isHidden) {
-          filtersPanel.removeAttribute('hidden');
-          filtersBtn.setAttribute('aria-expanded', 'true');
-        } else {
-          filtersPanel.setAttribute('hidden', '');
-          filtersBtn.setAttribute('aria-expanded', 'false');
-        }
-      });
-    }
 
     function applyFilters() {
       if (!grid) return;
@@ -188,6 +225,7 @@ sort($etablissements);
       const query = searchInput.value.trim().toLowerCase();
       const classe = filterClasse ? filterClasse.value : '';
       const etablissement = filterEtablissement ? filterEtablissement.value : '';
+      const periode = filterPeriode ? filterPeriode.value : '';
       const cards = grid.querySelectorAll('.stagiaire-card');
       let visibleCount = 0;
 
@@ -195,7 +233,8 @@ sort($etablissements);
         const matchesQuery = card.dataset.nom.includes(query);
         const matchesClasse = !classe || card.dataset.classe === classe;
         const matchesEtablissement = !etablissement || card.dataset.etablissement === etablissement;
-        const visible = matchesQuery && matchesClasse && matchesEtablissement;
+        const matchesPeriode = !periode || card.dataset.annee === periode;
+        const visible = matchesQuery && matchesClasse && matchesEtablissement && matchesPeriode;
 
         card.style.display = visible ? '' : 'none';
         if (visible) visibleCount++;
@@ -209,6 +248,7 @@ sort($etablissements);
     if (searchInput) searchInput.addEventListener('input', applyFilters);
     if (filterClasse) filterClasse.addEventListener('change', applyFilters);
     if (filterEtablissement) filterEtablissement.addEventListener('change', applyFilters);
+    if (filterPeriode) filterPeriode.addEventListener('change', applyFilters);
 
     // ── Modale : fiche détaillée d'un stagiaire ──
     const modalOverlay = document.getElementById('modalOverlay');
@@ -259,6 +299,83 @@ sort($etablissements);
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !modalOverlay.hasAttribute('hidden')) closeFiche();
     });
+
+    // ── Popup de connexion (haut à droite) ──
+    (function() {
+      const loginBtn = document.getElementById('loginBtn');
+      const loginPopup = document.getElementById('loginPopup');
+      if (!loginBtn || !loginPopup) return;
+
+      const loginPopupClose = document.getElementById('loginPopupClose');
+      const loginPopupForm = document.getElementById('loginPopupForm');
+      const loginPopupError = document.getElementById('loginPopupError');
+      const loginPopupSubmit = document.getElementById('loginPopupSubmit');
+      const loginPopupNom = document.getElementById('loginPopupNom');
+
+      function openPopup() {
+        loginPopup.removeAttribute('hidden');
+        loginBtn.setAttribute('aria-expanded', 'true');
+        loginPopupNom.focus();
+      }
+
+      function closePopup() {
+        loginPopup.setAttribute('hidden', '');
+        loginBtn.setAttribute('aria-expanded', 'false');
+      }
+
+      loginBtn.addEventListener('click', () => {
+        if (loginPopup.hasAttribute('hidden')) {
+          openPopup();
+        } else {
+          closePopup();
+        }
+      });
+
+      if (loginPopupClose) loginPopupClose.addEventListener('click', closePopup);
+
+      document.addEventListener('click', (e) => {
+        if (!loginPopup.hasAttribute('hidden') && !loginPopup.contains(e.target) && e.target !== loginBtn) {
+          closePopup();
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !loginPopup.hasAttribute('hidden')) closePopup();
+      });
+
+      if (loginPopupForm) {
+        loginPopupForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+
+          loginPopupError.hidden = true;
+          loginPopupSubmit.disabled = true;
+          loginPopupSubmit.textContent = 'Connexion…';
+
+          fetch('login.php', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: new FormData(loginPopupForm),
+          })
+            .then(response => response.json())
+            .then(data => {
+              if (data.success) {
+                window.location.href = data.redirect || 'index.php';
+              } else {
+                loginPopupError.textContent = data.erreur || 'Erreur de connexion.';
+                loginPopupError.hidden = false;
+                loginPopupSubmit.disabled = false;
+                loginPopupSubmit.textContent = 'Se connecter';
+              }
+            })
+            .catch(() => {
+              loginPopupError.textContent = 'Une erreur est survenue. Merci de réessayer.';
+              loginPopupError.hidden = false;
+              loginPopupSubmit.disabled = false;
+              loginPopupSubmit.textContent = 'Se connecter';
+            });
+        });
+      }
+    })();
 
     <?php if (isset($_GET['supprime'])): ?>
     // Petit popup de confirmation après suppression d'un stagiaire

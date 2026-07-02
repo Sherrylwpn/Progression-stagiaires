@@ -56,6 +56,135 @@ body {
   background-color: #f0e6f5;
 }
 
+.auth-btn[aria-expanded="true"] {
+  background-color: #f0e6f5;
+}
+
+/* ── Popup de connexion (ancré en haut à droite) ── */
+.login-popup {
+  position: fixed;
+  top: 84px;
+  right: 32px;
+  width: 300px;
+  max-width: calc(100vw - 32px);
+  background-color: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+  padding: 20px 22px 24px;
+  z-index: 200;
+  animation: loginPopupIn 0.18s ease-out;
+}
+
+@keyframes loginPopupIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.login-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #e0d9e3;
+  padding-bottom: 10px;
+  margin-bottom: 16px;
+}
+
+.login-popup-header h3 {
+  font-size: 16px;
+  color: #4b1d5c;
+}
+
+.login-popup-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  line-height: 1;
+  color: #999999;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.login-popup-close:hover {
+  color: #4b1d5c;
+}
+
+.login-popup-error {
+  background-color: #fdecea;
+  border: 1px solid #f44336;
+  color: #c62828;
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 14px;
+}
+
+.login-popup-field {
+  margin-bottom: 14px;
+}
+
+.login-popup-field label {
+  display: block;
+  font-size: 13px;
+  font-weight: bold;
+  color: #4b1d5c;
+  margin-bottom: 6px;
+}
+
+.login-popup-field input {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  background-color: #f7f7f7;
+  color: #1a1a1a;
+}
+
+.login-popup-field input:focus {
+  outline: none;
+  border-color: #4b1d5c;
+  box-shadow: 0 0 0 3px rgba(75, 29, 92, 0.15);
+}
+
+.login-popup-submit {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 11px;
+  background-color: #4b1d5c;
+  border: none;
+  border-radius: 24px;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.login-popup-submit:hover {
+  background-color: #6a2a80;
+}
+
+.login-popup-submit:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+@media (max-width: 640px) {
+  .login-popup {
+    top: 76px;
+    right: 16px;
+  }
+}
+
 /* Toolbar (search + filters) */
 .content {
   padding: 24px 32px;
@@ -102,24 +231,6 @@ body {
   opacity: 1;
 }
 
-/* Filters button */
-.filters-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background-color: #ffffff;
-  border: 1px solid #4b1d5c;
-  border-radius: 24px;
-  padding: 10px 22px;
-  font-size: 15px;
-  font-weight: bold;
-  color: #1a1a1a;
-  cursor: pointer;
-}
-
-.filters-btn:hover {
-  background-color: #f2f2f2;
-}
 /* ── Toolbar : bouton d'ajout + zone droite ── */
 .toolbar-right {
   display: flex;
@@ -149,14 +260,31 @@ body {
 
 /* ── Panneau de filtres ── */
 .filters-panel {
-  display: flex;
-  gap: 20px;
-  flex-wrap: wrap;
   background-color: #ffffff;
   border: 1px solid #4b1d5c;
   border-radius: 12px;
-  padding: 16px 20px;
+  padding: 14px 20px 18px;
   margin-top: 14px;
+}
+
+.filters-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: bold;
+  color: #4b1d5c;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e0d9e3;
+}
+
+.filters-panel-row {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
 }
 
 .filter-group {

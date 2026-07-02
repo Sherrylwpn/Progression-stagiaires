@@ -13,6 +13,9 @@ $erreur = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
 
+    // Requête envoyée depuis le popup de connexion (index.php) en AJAX ?
+    $estAjax = (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest');
+
     // ── Sanitisation EN PREMIER ──
     $nom          = trim($_POST['nom'] ?? '');
     $mot_de_passe = trim($_POST['mot_de_passe'] ?? '');
@@ -30,11 +33,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['user_nom']  = $utilisateur['nom'];
             $_SESSION['logged_at'] = time();
 
+            if ($estAjax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'redirect' => 'index.php']);
+                exit;
+            }
+
             header("Location: index.php");
             exit;
         } else {
             $erreur = "Nom ou mot de passe incorrect.";
         }
+    }
+
+    // À ce stade, il y a forcément une erreur (champs vides ou identifiants invalides)
+    if ($estAjax) {
+        header('Content-Type: application/json');
+        http_response_code(401);
+        echo json_encode(['success' => false, 'erreur' => $erreur]);
+        exit;
     }
 }
 ?>

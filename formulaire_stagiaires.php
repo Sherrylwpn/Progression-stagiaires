@@ -17,6 +17,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $prenom        = trim($_POST['prenom']         ?? '');
     $classe        = trim($_POST['classe']         ?? '');
     $etablissement = trim($_POST['etablissement']  ?? '');
+    $dateDebut     = trim($_POST['date_debut']     ?? '');
+    $dateFin       = trim($_POST['date_fin']       ?? '');
 
     $notesTech    = $_POST['tech']    ?? []; // [id_competence_technique => niveau]
     $notesHumaine = $_POST['humaine'] ?? []; // [id_competence_humaine   => niveau]
@@ -24,6 +26,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($nom === '' || $prenom === '' || $classe === '' || $etablissement === '') {
         $erreur = "Merci de remplir tous les champs des informations générales.";
+    } elseif ($dateDebut !== '' && $dateFin !== '' && $dateFin < $dateDebut) {
+        $erreur = "La date de fin de période ne peut pas être avant la date de début.";
     } else {
         $pdo = getDB();
 
@@ -33,7 +37,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($idEdition) {
                 // 1) Mise à jour du stagiaire existant
                 $stmt = $pdo->prepare(
-                    "UPDATE stagiaire SET nom = :nom, prenom = :prenom, classe = :classe, etablissement = :etablissement
+                    "UPDATE stagiaire SET nom = :nom, prenom = :prenom, classe = :classe, etablissement = :etablissement,
+                     date_debut = :date_debut, date_fin = :date_fin
                      WHERE id_stagiaire = :id"
                 );
                 $stmt->execute([
@@ -41,20 +46,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ':prenom'        => $prenom,
                     ':classe'        => $classe,
                     ':etablissement' => $etablissement,
+                    ':date_debut'    => $dateDebut !== '' ? $dateDebut : null,
+                    ':date_fin'      => $dateFin !== '' ? $dateFin : null,
                     ':id'            => $idEdition,
                 ]);
                 $idStagiaire = $idEdition;
             } else {
                 // 1) Création du stagiaire
                 $stmt = $pdo->prepare(
-                    "INSERT INTO stagiaire (nom, prenom, classe, etablissement)
-                     VALUES (:nom, :prenom, :classe, :etablissement)"
+                    "INSERT INTO stagiaire (nom, prenom, classe, etablissement, date_debut, date_fin)
+                     VALUES (:nom, :prenom, :classe, :etablissement, :date_debut, :date_fin)"
                 );
                 $stmt->execute([
                     ':nom'           => $nom,
                     ':prenom'        => $prenom,
                     ':classe'        => $classe,
                     ':etablissement' => $etablissement,
+                    ':date_debut'    => $dateDebut !== '' ? $dateDebut : null,
+                    ':date_fin'      => $dateFin !== '' ? $dateFin : null,
                 ]);
                 $idStagiaire = $pdo->lastInsertId();
             }
@@ -265,6 +274,14 @@ function renderStarInput(string $name, int $max, int $value): string
                 <option value="<?= $optEtab ?>" <?= (($stagiaireData['etablissement'] ?? '') === $optEtab) ? 'selected' : '' ?>><?= $optEtab ?></option>
               <?php endforeach; ?>
             </select>
+          </div>
+          <div class="field">
+            <label>Période</label>
+            <div class="date-range">
+              <input type="date" name="date_debut" value="<?= htmlspecialchars($stagiaireData['date_debut'] ?? '') ?>">
+              <span class="date-range-sep">→</span>
+              <input type="date" name="date_fin" value="<?= htmlspecialchars($stagiaireData['date_fin'] ?? '') ?>">
+            </div>
           </div>
         </section>
 
