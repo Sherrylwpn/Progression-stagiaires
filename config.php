@@ -71,3 +71,25 @@ function verifyCsrf(): void
         die("Erreur de sécurité : jeton CSRF invalide. Merci de recharger la page et réessayer.");
     }
 }
+
+// ── Contrôle d'accès ──
+
+/**
+ * Indique si un utilisateur est actuellement connecté.
+ */
+function isLoggedIn(): bool
+{
+    return !empty($_SESSION['user_id']);
+}
+
+/**
+ * Bloque l'accès à la page si l'utilisateur n'est pas connecté.
+ * À placer tout en haut des pages réservées (ajout / modification / suppression).
+ */
+function requireAuth(): void
+{
+    if (!isLoggedIn()) {
+        header("Location: login.php");
+        exit;
+    }
+}

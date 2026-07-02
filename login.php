@@ -3,7 +3,7 @@ require_once 'config.php';
 
 // Si déjà connecté → rediriger
 if (!empty($_SESSION['user_id'])) {
-    header("Location: dashboard.php");
+    header("Location: index.php");
     exit;
 }
 
@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['user_nom']  = $utilisateur['nom'];
             $_SESSION['logged_at'] = time();
 
-            header("Location: dashboard.php");
+            header("Location: index.php");
             exit;
         } else {
             $erreur = "Nom ou mot de passe incorrect.";

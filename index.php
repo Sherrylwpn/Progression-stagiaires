@@ -34,9 +34,18 @@ sort($etablissements);
   <link rel="stylesheet" href="index.css">
 </head>
 <body>
+  <div id="toast" class="toast"></div>
 
   <header class="header">
     <h1>Suivi stagiaire</h1>
+    <nav class="header-auth">
+      <?php if (!empty($_SESSION['user_id'])): ?>
+        <span class="header-user">Bonjour, <?= htmlspecialchars($_SESSION['user_nom']) ?></span>
+        <a href="logout.php" class="auth-btn">Déconnexion</a>
+      <?php else: ?>
+        <a href="login.php" class="auth-btn">Connexion</a>
+      <?php endif; ?>
+    </nav>
   </header>
 
   <main class="content">
@@ -56,7 +65,9 @@ sort($etablissements);
           </svg>
           Filtres
         </button>
-        <a href="formulaire_stagiaires.php" class="add-btn">+ Nouveau stagiaire</a>
+        <?php if (isLoggedIn()): ?>
+          <a href="formulaire_stagiaires.php" class="add-btn">+ Nouveau stagiaire</a>
+        <?php endif; ?>
       </div>
     </div>
 
@@ -85,7 +96,9 @@ sort($etablissements);
     <?php if (empty($stagiaires)): ?>
       <div class="empty-state">
         <p>Aucun stagiaire enregistré pour le moment.</p>
-        <a href="formulaire_stagiaires.php" class="add-btn">+ Ajouter le premier stagiaire</a>
+        <?php if (isLoggedIn()): ?>
+          <a href="formulaire_stagiaires.php" class="add-btn">+ Ajouter le premier stagiaire</a>
+        <?php endif; ?>
       </div>
     <?php else: ?>
       <div class="stagiaire-grid" id="stagiaireGrid">
@@ -96,9 +109,13 @@ sort($etablissements);
         ?>
           <article
             class="stagiaire-card"
+            data-id="<?= (int) $s['id_stagiaire'] ?>"
             data-nom="<?= htmlspecialchars(mb_strtolower($s['nom'] . ' ' . $s['prenom'])) ?>"
             data-classe="<?= htmlspecialchars($s['classe']) ?>"
             data-etablissement="<?= htmlspecialchars($s['etablissement']) ?>"
+            tabindex="0"
+            role="button"
+            aria-haspopup="dialog"
           >
             <div class="stagiaire-avatar"><?= htmlspecialchars($initiales) ?></div>
 
@@ -124,6 +141,24 @@ sort($etablissements);
     <?php endif; ?>
 
   </main>
+
+  <!-- Modale : fiche détaillée d'un stagiaire -->
+  <div class="modal-overlay" id="modalOverlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-topbar">
+        <button class="modal-back" id="modalBack">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+          Retour
+        </button>
+      </div>
+      <div class="modal-body" id="modalBody">
+        <p class="fiche-loading">Chargement…</p>
+      </div>
+    </div>
+  </div>
 
   <script>
     const searchInput = document.getElementById('searchInput');
@@ -174,6 +209,70 @@ sort($etablissements);
     if (searchInput) searchInput.addEventListener('input', applyFilters);
     if (filterClasse) filterClasse.addEventListener('change', applyFilters);
     if (filterEtablissement) filterEtablissement.addEventListener('change', applyFilters);
+
+    // ── Modale : fiche détaillée d'un stagiaire ──
+    const modalOverlay = document.getElementById('modalOverlay');
+    const modalBody = document.getElementById('modalBody');
+    const modalBack = document.getElementById('modalBack');
+
+    function openFiche(id) {
+      modalOverlay.removeAttribute('hidden');
+      modalBody.innerHTML = '<p class="fiche-loading">Chargement…</p>';
+
+      fetch('comp.php?id=' + encodeURIComponent(id))
+        .then(response => {
+          if (!response.ok) throw new Error('Erreur ' + response.status);
+          return response.text();
+        })
+        .then(html => {
+          modalBody.innerHTML = html;
+        })
+        .catch(() => {
+          modalBody.innerHTML = '<p class="fiche-loading">Impossible de charger la fiche du stagiaire.</p>';
+        });
+    }
+
+    function closeFiche() {
+      modalOverlay.setAttribute('hidden', '');
+    }
+
+    if (grid) {
+      grid.addEventListener('click', (e) => {
+        const card = e.target.closest('.stagiaire-card');
+        if (card) openFiche(card.dataset.id);
+      });
+
+      grid.addEventListener('keydown', (e) => {
+        if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('stagiaire-card')) {
+          e.preventDefault();
+          openFiche(e.target.dataset.id);
+        }
+      });
+    }
+
+    if (modalBack) modalBack.addEventListener('click', closeFiche);
+    if (modalOverlay) {
+      modalOverlay.addEventListener('click', (e) => {
+        if (e.target === modalOverlay) closeFiche();
+      });
+    }
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !modalOverlay.hasAttribute('hidden')) closeFiche();
+    });
+
+    <?php if (isset($_GET['supprime'])): ?>
+    // Petit popup de confirmation après suppression d'un stagiaire
+    (function() {
+      const toast = document.getElementById('toast');
+      toast.textContent = 'Stagiaire supprimé avec succès.';
+      toast.classList.add('show');
+      setTimeout(function() {
+        toast.classList.remove('show');
+      }, 2500);
+      // Nettoie l'URL pour éviter que le message ne réapparaisse au rechargement
+      window.history.replaceState({}, document.title, 'index.php');
+    })();
+    <?php endif; ?>
   </script>
 
 </body>

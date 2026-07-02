@@ -1,8 +1,13 @@
 <?php
 require_once 'config.php';
+requireAuth(); // Seuls les 2 utilisateurs connectés peuvent accéder à ce formulaire
 
 $erreur  = '';
 $succes  = '';
+
+// Mode édition si un id est fourni (en GET pour l'affichage, en POST pour la soumission)
+$idEdition = filter_input(INPUT_POST, 'id_stagiaire', FILTER_VALIDATE_INT)
+    ?: filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 
 // ── Traitement de la soumission ──
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -25,24 +30,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $pdo->beginTransaction();
 
-            // 1) Création du stagiaire
-            $stmt = $pdo->prepare(
-                "INSERT INTO stagiaire (nom, prenom, classe, etablissement)
-                 VALUES (:nom, :prenom, :classe, :etablissement)"
-            );
-            $stmt->execute([
-                ':nom'           => $nom,
-                ':prenom'        => $prenom,
-                ':classe'        => $classe,
-                ':etablissement' => $etablissement,
-            ]);
-            $idStagiaire = $pdo->lastInsertId();
+            if ($idEdition) {
+                // 1) Mise à jour du stagiaire existant
+                $stmt = $pdo->prepare(
+                    "UPDATE stagiaire SET nom = :nom, prenom = :prenom, classe = :classe, etablissement = :etablissement
+                     WHERE id_stagiaire = :id"
+                );
+                $stmt->execute([
+                    ':nom'           => $nom,
+                    ':prenom'        => $prenom,
+                    ':classe'        => $classe,
+                    ':etablissement' => $etablissement,
+                    ':id'            => $idEdition,
+                ]);
+                $idStagiaire = $idEdition;
+            } else {
+                // 1) Création du stagiaire
+                $stmt = $pdo->prepare(
+                    "INSERT INTO stagiaire (nom, prenom, classe, etablissement)
+                     VALUES (:nom, :prenom, :classe, :etablissement)"
+                );
+                $stmt->execute([
+                    ':nom'           => $nom,
+                    ':prenom'        => $prenom,
+                    ':classe'        => $classe,
+                    ':etablissement' => $etablissement,
+                ]);
+                $idStagiaire = $pdo->lastInsertId();
+            }
 
             // 2) Évaluations compétences techniques
             $stmtTech = $pdo->prepare(
                 "INSERT INTO evaluation_competence_technique (id_stagiaire, id_competence_technique, niveau)
                  VALUES (:id_stagiaire, :id_competence, :niveau)
                  ON DUPLICATE KEY UPDATE niveau = VALUES(niveau)"
+            );
+            $stmtTechDelete = $pdo->prepare(
+                "DELETE FROM evaluation_competence_technique WHERE id_stagiaire = :id_stagiaire AND id_competence_technique = :id_competence"
             );
             foreach ($notesTech as $idCompetence => $niveau) {
                 $niveau = (int) $niveau;
@@ -51,6 +75,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ':id_stagiaire' => $idStagiaire,
                         ':id_competence' => (int) $idCompetence,
                         ':niveau' => $niveau,
+                    ]);
+                } else {
+                    // Niveau remis à 0 : on supprime l'évaluation existante si elle existe
+                    $stmtTechDelete->execute([
+                        ':id_stagiaire' => $idStagiaire,
+                        ':id_competence' => (int) $idCompetence,
                     ]);
                 }
             }
@@ -61,6 +91,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  VALUES (:id_stagiaire, :id_competence, :niveau)
                  ON DUPLICATE KEY UPDATE niveau = VALUES(niveau)"
             );
+            $stmtHumaineDelete = $pdo->prepare(
+                "DELETE FROM evaluation_competence_humaine WHERE id_stagiaire = :id_stagiaire AND id_competence_humaine = :id_competence"
+            );
             foreach ($notesHumaine as $idCompetence => $niveau) {
                 $niveau = (int) $niveau;
                 if ($niveau >= 1 && $niveau <= 5) {
@@ -68,6 +101,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ':id_stagiaire' => $idStagiaire,
                         ':id_competence' => (int) $idCompetence,
                         ':niveau' => $niveau,
+                    ]);
+                } else {
+                    $stmtHumaineDelete->execute([
+                        ':id_stagiaire' => $idStagiaire,
+                        ':id_competence' => (int) $idCompetence,
                     ]);
                 }
             }
@@ -78,6 +116,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  VALUES (:id_stagiaire, :id_badge, :niveau)
                  ON DUPLICATE KEY UPDATE niveau = VALUES(niveau)"
             );
+            $stmtBadgeDelete = $pdo->prepare(
+                "DELETE FROM evaluation_badge WHERE id_stagiaire = :id_stagiaire AND id_badge = :id_badge"
+            );
             foreach ($notesBadge as $idBadge => $niveau) {
                 $niveau = (int) $niveau;
                 if ($niveau >= 1 && $niveau <= 3) {
@@ -86,15 +127,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ':id_badge' => (int) $idBadge,
                         ':niveau' => $niveau,
                     ]);
+                } else {
+                    $stmtBadgeDelete->execute([
+                        ':id_stagiaire' => $idStagiaire,
+                        ':id_badge' => (int) $idBadge,
+                    ]);
                 }
             }
 
             $pdo->commit();
-            $succes = "Stagiaire enregistré avec succès.";
+            $succes = $idEdition ? "Stagiaire modifié avec succès." : "Stagiaire enregistré avec succès.";
         } catch (Exception $e) {
             $pdo->rollBack();
             $erreur = "Erreur lors de l'enregistrement : " . $e->getMessage();
         }
+    }
+}
+
+// ── Chargement des données existantes si on est en mode édition (affichage du formulaire) ──
+$stagiaireData        = null;
+$notesTechExistantes    = [];
+$notesHumaineExistantes = [];
+$notesBadgeExistantes   = [];
+
+if ($idEdition && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+    $pdoTmp = getDB();
+
+    $stmt = $pdoTmp->prepare("SELECT * FROM stagiaire WHERE id_stagiaire = ?");
+    $stmt->execute([$idEdition]);
+    $stagiaireData = $stmt->fetch();
+
+    if (!$stagiaireData) {
+        http_response_code(404);
+        exit('Stagiaire introuvable.');
+    }
+
+    $stmt = $pdoTmp->prepare("SELECT id_competence_technique, niveau FROM evaluation_competence_technique WHERE id_stagiaire = ?");
+    $stmt->execute([$idEdition]);
+    foreach ($stmt->fetchAll() as $row) {
+        $notesTechExistantes[(int) $row['id_competence_technique']] = (int) $row['niveau'];
+    }
+
+    $stmt = $pdoTmp->prepare("SELECT id_competence_humaine, niveau FROM evaluation_competence_humaine WHERE id_stagiaire = ?");
+    $stmt->execute([$idEdition]);
+    foreach ($stmt->fetchAll() as $row) {
+        $notesHumaineExistantes[(int) $row['id_competence_humaine']] = (int) $row['niveau'];
+    }
+
+    $stmt = $pdoTmp->prepare("SELECT id_badge, niveau FROM evaluation_badge WHERE id_stagiaire = ?");
+    $stmt->execute([$idEdition]);
+    foreach ($stmt->fetchAll() as $row) {
+        $notesBadgeExistantes[(int) $row['id_badge']] = (int) $row['niveau'];
     }
 }
 
@@ -103,153 +186,187 @@ $pdo = getDB();
 $competencesTechniques = $pdo->query("SELECT id_competence_technique, nom FROM competence_technique ORDER BY nom")->fetchAll();
 $competencesHumaines   = $pdo->query("SELECT id_competence_humaine, nom FROM competence_humaine ORDER BY nom")->fetchAll();
 $badges                = $pdo->query("SELECT id_badge, nom FROM badge ORDER BY nom")->fetchAll();
+
+/**
+ * Génère un groupe d'étoiles SVG interactives (même visuel que la fiche stagiaire comp.php),
+ * accompagné de son input caché qui sera envoyé avec le formulaire.
+ */
+function renderStarInput(string $name, int $max, int $value): string
+{
+    $value = max(0, min($max, $value));
+    $html = '<div class="stars-input" data-max="' . $max . '">';
+    for ($i = 1; $i <= $max; $i++) {
+        $filled  = $i <= $value;
+        $couleur = $filled ? '#f0a500' : '#e2e2e2';
+        $html .= '<svg class="star" data-value="' . $i . '" width="20" height="20" viewBox="0 0 24 24" style="fill:' . $couleur . ';">'
+               . '<polygon points="12,2 15,9 22,9 16.5,13.5 18.5,21 12,17 5.5,21 7.5,13.5 2,9 9,9"></polygon>'
+               . '</svg>';
+    }
+    $html .= '</div>';
+    $html .= '<input type="hidden" class="rating-input" name="' . htmlspecialchars($name) . '" value="' . $value . '">';
+    return $html;
+}
 ?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Formulaire Stagiaire</title>
+  <title><?= $stagiaireData ? 'Modifier le stagiaire' : 'Nouveau stagiaire' ?></title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="card">
-    <h1>Formulaire stagiaire</h1>
+  <div id="toast" class="toast"></div>
 
-    <?php if ($succes !== ''): ?>
-      <p style="color: green; font-weight: 600; margin-bottom: 16px;"><?= htmlspecialchars($succes) ?></p>
-    <?php endif; ?>
+  <header class="header">
+    <a href="index.php" class="back-btn">&larr; Retour</a>
+    <h1><?= $stagiaireData ? 'Modifier le stagiaire' : 'Nouveau stagiaire' ?></h1>
+  </header>
+
+  <main class="content">
     <?php if ($erreur !== ''): ?>
-      <p style="color: #c62828; font-weight: 600; margin-bottom: 16px;"><?= htmlspecialchars($erreur) ?></p>
+      <div class="alert-error"><?= htmlspecialchars($erreur) ?></div>
     <?php endif; ?>
 
-    <form method="POST" action="formulaire_stagiaires.php">
+    <form method="POST" action="formulaire_stagiaires.php<?= $idEdition ? '?id=' . (int) $idEdition : '' ?>">
       <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+      <?php if ($idEdition): ?>
+        <input type="hidden" name="id_stagiaire" value="<?= (int) $idEdition ?>">
+      <?php endif; ?>
 
-      <!-- Informations générales -->
-      <div class="section-title">Informations générales</div>
-      <div class="info-grid">
-        <div class="field">
-          <label>Nom</label>
-          <input type="text" name="nom" required>
-        </div>
-        <div class="field">
-          <label>Prénom</label>
-          <input type="text" name="prenom" required>
-        </div>
-        <div class="field">
-          <label>Classe</label>
-          <select name="classe" required>
-            <option value="" disabled selected>Sélectionner...</option>
-            <option value="Seconde">Seconde</option>
-            <option value="Première">Première</option>
-            <option value="Terminale">Terminale</option>
-            <option value="Post-bac">Post-bac</option>
-            <option value="Licence 1">Licence 1</option>
-            <option value="Licence 2">Licence 2</option>
-            <option value="Licence 3">Licence 3</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Etablissement</label>
-          <select name="etablissement" required>
-            <option value="" disabled selected>Sélectionner...</option>
-            <option value="Lycée Dick Ukeiwé">Lycée Dick Ukeiwé</option>
-            <option value="Lycée polyvalent du Mont-Dore">Lycée polyvalent du Mont-Dore</option>
-            <option value="Université de la Nouvelle-Calédonie (UNC)">Université de la Nouvelle-Calédonie (UNC)</option>
-          </select>
-        </div>
-      </div>
+      <div class="form-grid">
 
-      <!-- Compétences techniques -->
-      <div class="section-title">Compétences technique</div>
-      <div class="skills-grid">
-        <?php foreach ($competencesTechniques as $comp): ?>
-          <div class="skill-item">
-            <div class="skill-name"><?= htmlspecialchars($comp['nom']) ?></div>
-            <div class="stars" data-max="3">
-              <span class="star">★</span>
-              <span class="star">★</span>
-              <span class="star">★</span>
-            </div>
-            <input type="hidden" class="rating-input" name="tech[<?= (int) $comp['id_competence_technique'] ?>]" value="0">
+        <!-- Colonne 1 : Informations générales -->
+        <section class="form-col">
+          <h3>Informations générales</h3>
+
+          <div class="field">
+            <label for="nom">Nom</label>
+            <input type="text" id="nom" name="nom" value="<?= htmlspecialchars($stagiaireData['nom'] ?? '') ?>" required>
           </div>
-        <?php endforeach; ?>
-      </div>
-
-      <!-- Badges -->
-      <div class="section-title">Badges</div>
-      <div class="skills-grid">
-        <?php foreach ($badges as $badge): ?>
-          <div class="skill-item">
-            <div class="skill-name"><?= htmlspecialchars($badge['nom']) ?></div>
-            <div class="stars" data-max="3">
-              <span class="star">★</span>
-              <span class="star">★</span>
-              <span class="star">★</span>
-            </div>
-            <input type="hidden" class="rating-input" name="badge[<?= (int) $badge['id_badge'] ?>]" value="0">
+          <div class="field">
+            <label for="prenom">Prénom</label>
+            <input type="text" id="prenom" name="prenom" value="<?= htmlspecialchars($stagiaireData['prenom'] ?? '') ?>" required>
           </div>
-        <?php endforeach; ?>
-      </div>
-
-      <!-- Compétences humaines / soft skills -->
-      <div class="section-title">Compétences humaine</div>
-      <div class="skills-grid-soft">
-        <?php foreach ($competencesHumaines as $comp): ?>
-          <div class="skill-item-soft">
-            <div class="skill-name"><?= htmlspecialchars($comp['nom']) ?></div>
-            <div class="stars-5">
-              <span class="star">★</span>
-              <span class="star">★</span>
-              <span class="star">★</span>
-              <span class="star">★</span>
-              <span class="star">★</span>
-            </div>
-            <input type="hidden" class="rating-input" name="humaine[<?= (int) $comp['id_competence_humaine'] ?>]" value="0">
+          <div class="field">
+            <label for="classe">Classe</label>
+            <select id="classe" name="classe" required>
+              <option value="" disabled <?= empty($stagiaireData) ? 'selected' : '' ?>>Sélectionner...</option>
+              <?php foreach (['Seconde', 'Première', 'Terminale', 'Post-bac', 'Licence 1', 'Licence 2', 'Licence 3'] as $optClasse): ?>
+                <option value="<?= $optClasse ?>" <?= (($stagiaireData['classe'] ?? '') === $optClasse) ? 'selected' : '' ?>><?= $optClasse ?></option>
+              <?php endforeach; ?>
+            </select>
           </div>
-        <?php endforeach; ?>
+          <div class="field">
+            <label for="etablissement">Établissement</label>
+            <select id="etablissement" name="etablissement" required>
+              <option value="" disabled <?= empty($stagiaireData) ? 'selected' : '' ?>>Sélectionner...</option>
+              <?php foreach (['Lycée Dick Ukeiwé', 'Lycée polyvalent du Mont-Dore', 'Université de la Nouvelle-Calédonie (UNC)'] as $optEtab): ?>
+                <option value="<?= $optEtab ?>" <?= (($stagiaireData['etablissement'] ?? '') === $optEtab) ? 'selected' : '' ?>><?= $optEtab ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+        </section>
+
+        <!-- Colonne 2 : Compétences techniques -->
+        <section class="form-col">
+          <h3>Compétences techniques</h3>
+          <div class="skill-list">
+            <?php foreach ($competencesTechniques as $comp):
+              $val = $notesTechExistantes[(int) $comp['id_competence_technique']] ?? 0;
+            ?>
+              <div class="skill-item">
+                <span class="skill-name"><?= htmlspecialchars($comp['nom']) ?></span>
+                <?= renderStarInput('tech[' . (int) $comp['id_competence_technique'] . ']', 3, $val) ?>
+              </div>
+            <?php endforeach; ?>
+            <?php if (empty($competencesTechniques)): ?>
+              <p class="fiche-empty">Aucune compétence technique définie.</p>
+            <?php endif; ?>
+          </div>
+        </section>
+
+        <!-- Colonne 3 : Compétences humaines -->
+        <section class="form-col">
+          <h3>Compétences humaines</h3>
+          <div class="skill-list">
+            <?php foreach ($competencesHumaines as $comp):
+              $val = $notesHumaineExistantes[(int) $comp['id_competence_humaine']] ?? 0;
+            ?>
+              <div class="skill-item">
+                <span class="skill-name"><?= htmlspecialchars($comp['nom']) ?></span>
+                <?= renderStarInput('humaine[' . (int) $comp['id_competence_humaine'] . ']', 5, $val) ?>
+              </div>
+            <?php endforeach; ?>
+            <?php if (empty($competencesHumaines)): ?>
+              <p class="fiche-empty">Aucune compétence humaine définie.</p>
+            <?php endif; ?>
+          </div>
+        </section>
+
+        <!-- Colonne 4 : Badges -->
+        <section class="form-col">
+          <h3>Badges</h3>
+          <div class="skill-list">
+            <?php foreach ($badges as $badge):
+              $val = $notesBadgeExistantes[(int) $badge['id_badge']] ?? 0;
+            ?>
+              <div class="skill-item">
+                <span class="skill-name"><?= htmlspecialchars($badge['nom']) ?></span>
+                <?= renderStarInput('badge[' . (int) $badge['id_badge'] . ']', 3, $val) ?>
+              </div>
+            <?php endforeach; ?>
+            <?php if (empty($badges)): ?>
+              <p class="fiche-empty">Aucun badge défini.</p>
+            <?php endif; ?>
+          </div>
+        </section>
+
       </div>
 
-      <button type="submit" class="submit-btn">Enregistrer le stagiaire</button>
+      <button type="submit" class="submit-btn"><?= $idEdition ? 'Enregistrer les modifications' : 'Enregistrer le stagiaire' ?></button>
     </form>
-  </div>
+  </main>
 
   <script>
-    // Star rating interactivity — met aussi à jour l'input caché associé
-    document.querySelectorAll('.stars, .stars-5').forEach(container => {
-      const stars = container.querySelectorAll('.star');
-      const hiddenInput = container.parentElement.querySelector('.rating-input');
+    // Étoiles interactives (SVG) — clic pour fixer la note, survol pour prévisualiser
+    document.querySelectorAll('.stars-input').forEach(container => {
+      const stars = Array.from(container.querySelectorAll('.star'));
+      const hiddenInput = container.nextElementSibling; // input.rating-input juste après
       let currentRating = hiddenInput ? (parseInt(hiddenInput.value, 10) || 0) : 0;
 
-      stars.forEach((star, index) => {
-        star.addEventListener('mouseenter', () => {
-          stars.forEach((s, i) => {
-            s.style.color = i <= index ? '#111' : '#aaa';
-          });
-        });
-
-        star.addEventListener('click', () => {
-          currentRating = index + 1;
-          updateStars();
-          if (hiddenInput) {
-            hiddenInput.value = currentRating;
-          }
-        });
-      });
-
-      container.addEventListener('mouseleave', () => {
-        updateStars();
-      });
-
-      function updateStars() {
+      function paint(n) {
         stars.forEach((s, i) => {
-          s.style.color = i < currentRating ? '#111' : '#aaa';
+          s.style.fill = i < n ? '#f0a500' : '#e2e2e2';
         });
       }
 
-      updateStars();
+      stars.forEach((star, index) => {
+        star.addEventListener('mouseenter', () => paint(index + 1));
+
+        star.addEventListener('click', () => {
+          currentRating = index + 1;
+          if (hiddenInput) hiddenInput.value = currentRating;
+          paint(currentRating);
+        });
+      });
+
+      container.addEventListener('mouseleave', () => paint(currentRating));
+
+      paint(currentRating);
     });
+
+    <?php if ($succes !== ''): ?>
+    // Affiche un petit popup de confirmation puis redirige vers l'index
+    (function() {
+      const toast = document.getElementById('toast');
+      toast.textContent = <?= json_encode($succes) ?>;
+      toast.classList.add('show');
+      setTimeout(function() {
+        window.location.href = 'index.php';
+      }, 1500);
+    })();
+    <?php endif; ?>
   </script>
 </body>
 </html>
