@@ -24,10 +24,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $notesHumaine = $_POST['humaine'] ?? []; // [id_competence_humaine   => niveau]
     $notesBadge   = $_POST['badge']   ?? []; // [id_badge                => niveau]
 
+    // Note globale /20 (facultative)
+    $note = trim($_POST['note'] ?? '');
+    $note = str_replace(',', '.', $note);
+
     if ($nom === '' || $prenom === '' || $classe === '' || $etablissement === '') {
         $erreur = "Merci de remplir tous les champs des informations générales.";
     } elseif ($dateDebut !== '' && $dateFin !== '' && $dateFin < $dateDebut) {
         $erreur = "La date de fin de période ne peut pas être avant la date de début.";
+    } elseif ($note !== '' && (!is_numeric($note) || (float) $note < 0 || (float) $note > 20)) {
+        $erreur = "La notation doit être un nombre compris entre 0 et 20.";
     } else {
         $pdo = getDB();
 
@@ -144,6 +150,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
+            // 5) Notation globale (/20)
+            if ($note !== '') {
+                $stmtNote = $pdo->prepare(
+                    "INSERT INTO notation (id_stagiaire, note) VALUES (:id_stagiaire, :note)
+                     ON DUPLICATE KEY UPDATE note = VALUES(note)"
+                );
+                $stmtNote->execute([
+                    ':id_stagiaire' => $idStagiaire,
+                    ':note'         => (float) $note,
+                ]);
+            } else {
+                // Champ vidé : on supprime la notation existante s'il y en a une
+                $pdo->prepare("DELETE FROM notation WHERE id_stagiaire = :id_stagiaire")
+                    ->execute([':id_stagiaire' => $idStagiaire]);
+            }
+
             $pdo->commit();
             $succes = $idEdition ? "Stagiaire modifié avec succès." : "Stagiaire enregistré avec succès.";
         } catch (Exception $e) {
@@ -158,6 +180,7 @@ $stagiaireData        = null;
 $notesTechExistantes    = [];
 $notesHumaineExistantes = [];
 $notesBadgeExistantes   = [];
+$noteExistante          = null;
 
 if ($idEdition && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     $pdoTmp = getDB();
@@ -188,6 +211,12 @@ if ($idEdition && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     foreach ($stmt->fetchAll() as $row) {
         $notesBadgeExistantes[(int) $row['id_badge']] = (int) $row['niveau'];
     }
+
+    // Notation globale (/20), jointure simple sur id_stagiaire
+    $stmt = $pdoTmp->prepare("SELECT note FROM notation WHERE id_stagiaire = ?");
+    $stmt->execute([$idEdition]);
+    $noteRow = $stmt->fetch();
+    $noteExistante = $noteRow ? $noteRow['note'] : null;
 }
 
 // ── Chargement des listes depuis la base (pour générer le formulaire) ──
@@ -336,6 +365,20 @@ function renderStarInput(string $name, int $max, int $value): string
             <?php if (empty($badges)): ?>
               <p class="fiche-empty">Aucun badge défini.</p>
             <?php endif; ?>
+          </div>
+
+          <?php
+            // En cas de ré-affichage après erreur, on garde la valeur tapée par l'utilisateur ;
+            // sinon (chargement initial en édition), on reprend la note déjà enregistrée.
+            $valeurNoteAffichee = ($_SERVER['REQUEST_METHOD'] === 'POST')
+                ? ($note ?? '')
+                : ($noteExistante !== null ? (string) $noteExistante : '');
+          ?>
+          <div class="field" style="margin-top:20px;padding-top:16px;border-top:1px solid #e0d9e3;">
+            <label for="note">Notation globale (/20)</label>
+            <input type="number" id="note" name="note" min="0" max="20" step="0.5"
+                   placeholder="Ex : 15.5"
+                   value="<?= htmlspecialchars($valeurNoteAffichee) ?>">
           </div>
         </section>
 

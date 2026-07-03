@@ -191,34 +191,40 @@ body {
 }
 
 .toolbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr minmax(320px, 780px) 1fr;
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
+}
+
+.toolbar-spacer {
+  visibility: hidden;
 }
 
 /* Search bar */
 .search-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
   background-color: #ffffff;
   border: 1px solid #4b1d5c;
-  border-radius: 24px;
-  padding: 10px 18px;
-  width: 380px;
-  max-width: 100%;
+  border-radius: 30px;
+  padding: 16px 26px;
+  width: 100%;
+  justify-self: center;
 }
 
 .search-icon {
   color: #333333;
   flex-shrink: 0;
+  width: 20px;
+  height: 20px;
 }
 
 .search-bar input {
   border: none;
   outline: none;
-  font-size: 15px;
+  font-size: 18px;
   font-weight: bold;
   color: #333333;
   width: 100%;
@@ -235,6 +241,8 @@ body {
 .toolbar-right {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  justify-self: end;
   gap: 12px;
 }
 
@@ -260,10 +268,12 @@ body {
 
 /* ── Panneau de filtres ── */
 .filters-panel {
+  width: fit-content;
+  max-width: 100%;
   background-color: #ffffff;
   border: 1px solid #4b1d5c;
   border-radius: 12px;
-  padding: 14px 20px 18px;
+  padding: 14px 28px 18px;
   margin-top: 14px;
 }
 
@@ -283,7 +293,7 @@ body {
 
 .filters-panel-row {
   display: flex;
-  gap: 20px;
+  gap: 80px;
   flex-wrap: wrap;
 }
 
@@ -322,6 +332,13 @@ body {
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 18px;
   margin-top: 22px;
+}
+
+/* S'assure que l'attribut hidden masque bien la grille et la vue groupée,
+   même si .stagiaire-grid / .periode-groups définissent leur propre display */
+#stagiaireGrid[hidden],
+#periodeGroups[hidden] {
+  display: none;
 }
 
 .stagiaire-card {
@@ -420,6 +437,26 @@ body {
   color: #666666;
 }
 
+/* ── Vue groupée par date de début (filtre Période) ── */
+.periode-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  margin-top: 22px;
+}
+
+.periode-group-title {
+  font-size: 15px;
+  font-weight: bold;
+  color: #4b1d5c;
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e0d9e3;
+}
+
+.periode-group .stagiaire-grid {
+  margin-top: 0;
+}
 /* ── États vides ── */
 .empty-state,
 .no-results {
@@ -441,8 +478,11 @@ body {
 /* ── Responsive ── */
 @media (max-width: 640px) {
   .toolbar {
-    flex-direction: column;
-    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar-spacer {
+    display: none;
   }
 
   .search-bar {
@@ -590,6 +630,18 @@ body {
 .fiche-empty {
   font-size: 14px;
   color: #777777;
+}
+
+.fiche-note-value {
+  font-size: 28px;
+  font-weight: bold;
+  color: #4b1d5c;
+}
+
+.fiche-note-max {
+  font-size: 15px;
+  font-weight: bold;
+  color: #999999;
 }
 
 .competence-list {

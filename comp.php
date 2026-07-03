@@ -37,6 +37,20 @@ $techniques = fetchCompetences($pdo, 'competence_technique', 'evaluation_compete
 $humaines   = fetchCompetences($pdo, 'competence_humaine', 'evaluation_competence_humaine', 'id_competence_humaine', $id);
 $badges     = fetchCompetences($pdo, 'badge', 'evaluation_badge', 'id_badge', $id);
 
+// ── Notation globale (/20), jointure simple sur id_stagiaire ──
+$stmtNote = $pdo->prepare("SELECT note FROM notation WHERE id_stagiaire = ?");
+$stmtNote->execute([$id]);
+$noteRow = $stmtNote->fetch();
+$note    = $noteRow ? (float) $noteRow['note'] : null;
+
+/**
+ * Formate la note sans zéro décimal inutile (15.50 -> 15.5, 16.00 -> 16).
+ */
+function formatNote(float $note): string
+{
+    return rtrim(rtrim(number_format($note, 2, '.', ''), '0'), '.');
+}
+
 // Échelles d'étoiles : techniques et badges sur 3, compétences humaines sur 5
 const MAX_ETOILES_TECHNIQUE = 3;
 const MAX_ETOILES_HUMAINE   = 5;
@@ -91,6 +105,15 @@ $initiales = mb_strtoupper(mb_substr($stagiaire['prenom'], 0, 1) . mb_substr($st
     </div>
   </div>
 </div>
+
+<section class="fiche-section">
+  <h3>Notation globale</h3>
+  <?php if ($note !== null): ?>
+    <p class="fiche-note-value"><?= htmlspecialchars(formatNote($note)) ?> <span class="fiche-note-max">/ 20</span></p>
+  <?php else: ?>
+    <p class="fiche-empty">Aucune notation attribuée pour le moment.</p>
+  <?php endif; ?>
+</section>
 
 <section class="fiche-section">
   <h3>Compétences techniques</h3>

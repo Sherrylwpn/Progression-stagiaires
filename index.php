@@ -8,8 +8,10 @@ $stagiaires = $pdo->query("
     s.id_stagiaire, s.nom, s.prenom, s.classe, s.etablissement, s.date_debut, s.date_fin,
     (SELECT COUNT(*) FROM evaluation_competence_technique et WHERE et.id_stagiaire = s.id_stagiaire) AS nb_tech,
     (SELECT COUNT(*) FROM evaluation_competence_humaine  eh WHERE eh.id_stagiaire = s.id_stagiaire) AS nb_hum,
-    (SELECT COUNT(*) FROM evaluation_badge               eb WHERE eb.id_stagiaire = s.id_stagiaire) AS nb_badge
+    (SELECT COUNT(*) FROM evaluation_badge               eb WHERE eb.id_stagiaire = s.id_stagiaire) AS nb_badge,
+    n.note AS note
   FROM stagiaire s
+  LEFT JOIN notation n ON n.id_stagiaire = s.id_stagiaire
   ORDER BY s.nom, s.prenom
 ")->fetchAll();
 
@@ -88,6 +90,8 @@ rsort($annees); // les plus récentes en premier
 
   <main class="content">
     <div class="toolbar">
+      <div class="toolbar-spacer" aria-hidden="true"></div>
+
       <div class="search-bar">
         <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="11" cy="11" r="8"></circle>
@@ -164,6 +168,7 @@ rsort($annees); // les plus récentes en premier
             data-classe="<?= htmlspecialchars($s['classe']) ?>"
             data-etablissement="<?= htmlspecialchars($s['etablissement']) ?>"
             data-annee="<?= htmlspecialchars($annee) ?>"
+            data-debut="<?= htmlspecialchars($s['date_debut'] ?? '') ?>"
             tabindex="0"
             role="button"
             aria-haspopup="dialog"
@@ -182,11 +187,19 @@ rsort($annees); // les plus récentes en premier
               <div class="progress-track">
                 <div class="progress-fill" style="width: <?= $pct ?>%;"></div>
               </div>
-              <span class="progress-label"><?= $pct ?>% évalué</span>
+              <span class="progress-label">
+                <?= $pct ?>% évalué
+                <?php if ($s['note'] !== null): ?>
+                  · Note : <?= htmlspecialchars(rtrim(rtrim(number_format((float) $s['note'], 2, '.', ''), '0'), '.')) ?>/20
+                <?php endif; ?>
+              </span>
             </div>
           </article>
         <?php endforeach; ?>
       </div>
+
+      <!-- Vue groupée par date de début, affichée uniquement quand une période précise est sélectionnée -->
+      <div class="periode-groups" id="periodeGroups" hidden></div>
 
       <p class="no-results" id="noResults" hidden>Aucun stagiaire ne correspond à votre recherche.</p>
     <?php endif; ?>
@@ -217,7 +230,61 @@ rsort($annees); // les plus récentes en premier
     const filterEtablissement = document.getElementById('filterEtablissement');
     const filterPeriode = document.getElementById('filterPeriode');
     const grid = document.getElementById('stagiaireGrid');
+    const periodeGroups = document.getElementById('periodeGroups');
     const noResults = document.getElementById('noResults');
+
+    function formatDateFR(iso) {
+      if (!iso) return '';
+      const [y, m, d] = iso.split('-');
+      return `${d}/${m}/${y}`;
+    }
+
+    function renderGroupedView(matches) {
+      periodeGroups.innerHTML = '';
+
+      // Regroupe les cartes correspondantes par date de début exacte
+      const groups = new Map();
+      matches.forEach(card => {
+        const key = card.dataset.debut || '__non_renseigne__';
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(card);
+      });
+
+      // Trie les groupes : dates les plus récentes en premier, "non renseigné" en dernier
+      const sortedKeys = Array.from(groups.keys()).sort((a, b) => {
+        if (a === '__non_renseigne__') return 1;
+        if (b === '__non_renseigne__') return -1;
+        return b.localeCompare(a);
+      });
+
+      sortedKeys.forEach(key => {
+        const groupCards = groups.get(key);
+
+        const section = document.createElement('div');
+        section.className = 'periode-group';
+
+        const title = document.createElement('h3');
+        title.className = 'periode-group-title';
+        const label = key === '__non_renseigne__'
+          ? 'Date de début non renseignée'
+          : 'Arrivée le ' + formatDateFR(key);
+        const nb = groupCards.length;
+        title.textContent = `${label} — ${nb} stagiaire${nb > 1 ? 's' : ''}`;
+
+        const groupGrid = document.createElement('div');
+        groupGrid.className = 'stagiaire-grid';
+
+        groupCards.forEach(card => {
+          const clone = card.cloneNode(true);
+          clone.style.display = '';
+          groupGrid.appendChild(clone);
+        });
+
+        section.appendChild(title);
+        section.appendChild(groupGrid);
+        periodeGroups.appendChild(section);
+      });
+    }
 
     function applyFilters() {
       if (!grid) return;
@@ -226,22 +293,33 @@ rsort($annees); // les plus récentes en premier
       const classe = filterClasse ? filterClasse.value : '';
       const etablissement = filterEtablissement ? filterEtablissement.value : '';
       const periode = filterPeriode ? filterPeriode.value : '';
-      const cards = grid.querySelectorAll('.stagiaire-card');
-      let visibleCount = 0;
+      const cards = Array.from(grid.querySelectorAll('.stagiaire-card'));
 
-      cards.forEach(card => {
+      const matches = cards.filter(card => {
         const matchesQuery = card.dataset.nom.includes(query);
         const matchesClasse = !classe || card.dataset.classe === classe;
         const matchesEtablissement = !etablissement || card.dataset.etablissement === etablissement;
         const matchesPeriode = !periode || card.dataset.annee === periode;
-        const visible = matchesQuery && matchesClasse && matchesEtablissement && matchesPeriode;
-
-        card.style.display = visible ? '' : 'none';
-        if (visible) visibleCount++;
+        return matchesQuery && matchesClasse && matchesEtablissement && matchesPeriode;
       });
 
+      if (periode) {
+        // Une période précise est sélectionnée → vue groupée par date de début
+        grid.hidden = true;
+        periodeGroups.hidden = false;
+        renderGroupedView(matches);
+      } else {
+        // "Toutes" → grille simple habituelle
+        periodeGroups.hidden = true;
+        periodeGroups.innerHTML = '';
+        grid.hidden = false;
+        cards.forEach(card => {
+          card.style.display = matches.includes(card) ? '' : 'none';
+        });
+      }
+
       if (noResults) {
-        noResults.hidden = visibleCount !== 0;
+        noResults.hidden = matches.length !== 0;
       }
     }
 
@@ -276,19 +354,26 @@ rsort($annees); // les plus récentes en premier
       modalOverlay.setAttribute('hidden', '');
     }
 
-    if (grid) {
-      grid.addEventListener('click', (e) => {
+    // Délégation d'événements : fonctionne aussi bien sur la grille simple
+    // que sur les cartes clonées dans la vue groupée par période.
+    function bindCardEvents(container) {
+      if (!container) return;
+
+      container.addEventListener('click', (e) => {
         const card = e.target.closest('.stagiaire-card');
         if (card) openFiche(card.dataset.id);
       });
 
-      grid.addEventListener('keydown', (e) => {
+      container.addEventListener('keydown', (e) => {
         if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('stagiaire-card')) {
           e.preventDefault();
           openFiche(e.target.dataset.id);
         }
       });
     }
+
+    bindCardEvents(grid);
+    bindCardEvents(periodeGroups);
 
     if (modalBack) modalBack.addEventListener('click', closeFiche);
     if (modalOverlay) {
