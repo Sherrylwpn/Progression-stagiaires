@@ -242,3 +242,34 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Mode sombre ── */
+body.dark-mode {
+  background-color: #1c1620;
+}
+
+body.dark-mode .form-col {
+  background-color: #2a2130;
+  border-color: #3d3145;
+}
+
+body.dark-mode .form-col h3,
+body.dark-mode .field label {
+  color: #d8cfe0;
+}
+
+body.dark-mode .skill-name,
+body.dark-mode .competence-nom {
+  color: #e9e2ee;
+}
+
+body.dark-mode .field input,
+body.dark-mode .field select {
+  background-color: #382c40;
+  border-color: #4a3d54;
+  color: #e9e2ee;
+}
+
+body.dark-mode .fiche-empty {
+  color: #b8aec2;
+}

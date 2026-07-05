@@ -22,6 +22,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($nom === '' || $mot_de_passe === '') {
         $erreur = "Veuillez remplir tous les champs.";
+    } elseif (!empty($_SESSION['login_lock_until']) && time() < $_SESSION['login_lock_until']) {
+        $attente = $_SESSION['login_lock_until'] - time();
+        $erreur = "Trop de tentatives échouées. Réessayez dans {$attente} secondes.";
     } else {
         $pdo  = getDB();
         $stmt = $pdo->prepare("SELECT * FROM users WHERE nom = :nom LIMIT 1");
@@ -29,9 +32,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $utilisateur = $stmt->fetch();
 
         if ($utilisateur && password_verify($mot_de_passe, $utilisateur['mot_de_passe'])) {
-            $_SESSION['user_id']   = $utilisateur['id'];
-            $_SESSION['user_nom']  = $utilisateur['nom'];
-            $_SESSION['logged_at'] = time();
+            // Régénère l'identifiant de session à chaque connexion : empêche la
+            // fixation de session (un attaquant ne peut pas réutiliser un id
+            // de session obtenu avant l'authentification).
+            session_regenerate_id(true);
+
+            $_SESSION['user_id']      = $utilisateur['id'];
+            $_SESSION['user_nom']     = $utilisateur['nom'];
+            $_SESSION['logged_at']    = time();
+            $_SESSION['mode_sombre']  = (bool) ($utilisateur['mode_sombre'] ?? false);
+            unset($_SESSION['login_attempts'], $_SESSION['login_lock_until']);
 
             if ($estAjax) {
                 header('Content-Type: application/json');
@@ -42,6 +52,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header("Location: index.php");
             exit;
         } else {
+            $_SESSION['login_attempts'] = ($_SESSION['login_attempts'] ?? 0) + 1;
+            if ($_SESSION['login_attempts'] >= 5) {
+                $_SESSION['login_lock_until'] = time() + 60; // 1 minute de blocage après 5 échecs
+                $_SESSION['login_attempts'] = 0;
+            }
             $erreur = "Nom ou mot de passe incorrect.";
         }
     }

@@ -45,7 +45,7 @@ rsort($annees); // les plus récentes en premier
   <title>Suivi stagiaire</title>
   <link rel="stylesheet" href="index.css">
 </head>
-<body>
+<body class="<?= bodyClass() ?>">
   <div id="toast" class="toast"></div>
 
   <header class="header">
@@ -53,6 +53,21 @@ rsort($annees); // les plus récentes en premier
     <nav class="header-auth">
       <?php if (!empty($_SESSION['user_id'])): ?>
         <span class="header-user">Bonjour, <?= htmlspecialchars($_SESSION['user_nom']) ?></span>
+
+        <div class="menu-wrapper">
+          <button type="button" class="menu-btn" id="menuBtn" aria-expanded="false" aria-controls="menuDropdown" aria-label="Menu">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <line x1="4" y1="7" x2="20" y2="7"></line>
+              <line x1="4" y1="12" x2="20" y2="12"></line>
+              <line x1="4" y1="17" x2="20" y2="17"></line>
+            </svg>
+          </button>
+          <div class="menu-dropdown" id="menuDropdown" hidden>
+            <a href="parametres.php">Paramètres</a>
+            <a href="historique.php">Suivi des modifications</a>
+          </div>
+        </div>
+
         <a href="logout.php" class="auth-btn">Déconnexion</a>
       <?php else: ?>
         <button type="button" class="auth-btn" id="loginBtn" aria-expanded="false" aria-controls="loginPopup">Connexion</button>
@@ -384,6 +399,37 @@ rsort($annees); // les plus récentes en premier
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !modalOverlay.hasAttribute('hidden')) closeFiche();
     });
+
+    // ── Menu (3 traits) : paramètres / suivi des modifications ──
+    (function() {
+      const menuBtn = document.getElementById('menuBtn');
+      const menuDropdown = document.getElementById('menuDropdown');
+      if (!menuBtn || !menuDropdown) return;
+
+      function openMenu() {
+        menuDropdown.removeAttribute('hidden');
+        menuBtn.setAttribute('aria-expanded', 'true');
+      }
+      function closeMenu() {
+        menuDropdown.setAttribute('hidden', '');
+        menuBtn.setAttribute('aria-expanded', 'false');
+      }
+
+      menuBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menuDropdown.hasAttribute('hidden') ? openMenu() : closeMenu();
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!menuDropdown.hasAttribute('hidden') && !menuDropdown.contains(e.target) && e.target !== menuBtn) {
+          closeMenu();
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !menuDropdown.hasAttribute('hidden')) closeMenu();
+      });
+    })();
 
     // ── Popup de connexion (haut à droite) ──
     (function() {

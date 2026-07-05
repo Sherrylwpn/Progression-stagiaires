@@ -17,6 +17,17 @@ if (!$id) {
 
 $pdo = getDB();
 
+// On récupère le nom du stagiaire AVANT suppression, pour pouvoir
+// le conserver lisible dans le journal des modifications.
+$stmtInfo = $pdo->prepare("SELECT nom, prenom FROM stagiaire WHERE id_stagiaire = ?");
+$stmtInfo->execute([$id]);
+$infoStagiaire = $stmtInfo->fetch();
+
+if (!$infoStagiaire) {
+    http_response_code(404);
+    exit('Stagiaire introuvable.');
+}
+
 try {
     $pdo->beginTransaction();
 
@@ -28,6 +39,8 @@ try {
     $pdo->prepare("DELETE FROM stagiaire WHERE id_stagiaire = ?")->execute([$id]);
 
     $pdo->commit();
+
+    logAction('suppression', null, $infoStagiaire['nom'] . ' ' . $infoStagiaire['prenom']);
 } catch (Exception $e) {
     $pdo->rollBack();
     http_response_code(500);

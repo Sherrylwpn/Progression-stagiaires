@@ -167,6 +167,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $pdo->commit();
+
+            logAction(
+                $idEdition ? 'modification' : 'creation',
+                (int) $idStagiaire,
+                $nom . ' ' . $prenom
+            );
+
             $succes = $idEdition ? "Stagiaire modifié avec succès." : "Stagiaire enregistré avec succès.";
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -253,7 +260,7 @@ function renderStarInput(string $name, int $max, int $value): string
   <title><?= $stagiaireData ? 'Modifier le stagiaire' : 'Nouveau stagiaire' ?></title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="<?= bodyClass() ?>">
   <div id="toast" class="toast"></div>
 
   <header class="header">

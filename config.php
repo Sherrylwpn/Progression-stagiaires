@@ -93,3 +93,38 @@ function requireAuth(): void
         exit;
     }
 }
+
+// ── Préférence d'affichage (mode sombre) ──
+
+/**
+ * Retourne la classe CSS à appliquer sur <body> selon la préférence
+ * de l'utilisateur connecté (mémorisée en session après le login).
+ */
+function bodyClass(): string
+{
+    return !empty($_SESSION['mode_sombre']) ? 'dark-mode' : '';
+}
+
+// ── Journal des modifications ──
+
+/**
+ * Enregistre une action (création / modification / suppression) effectuée
+ * par l'utilisateur actuellement connecté sur la fiche d'un stagiaire.
+ * À appeler juste après un commit réussi.
+ */
+function logAction(string $action, ?int $idStagiaire, string $nomStagiaire, string $details = ''): void
+{
+    $pdo = getDB();
+    $stmt = $pdo->prepare(
+        "INSERT INTO journal_modifications (id_user, nom_user, action, id_stagiaire, nom_stagiaire, details)
+         VALUES (:id_user, :nom_user, :action, :id_stagiaire, :nom_stagiaire, :details)"
+    );
+    $stmt->execute([
+        ':id_user'       => $_SESSION['user_id'] ?? null,
+        ':nom_user'      => $_SESSION['user_nom'] ?? 'Inconnu',
+        ':action'        => $action,
+        ':id_stagiaire'  => $idStagiaire,
+        ':nom_stagiaire' => $nomStagiaire,
+        ':details'       => $details !== '' ? $details : null,
+    ]);
+}

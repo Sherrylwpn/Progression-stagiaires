@@ -60,6 +60,120 @@ body {
   background-color: #f0e6f5;
 }
 
+/* ── Menu (3 traits) ── */
+.menu-wrapper {
+  position: relative;
+}
+
+.menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.menu-btn:hover,
+.menu-btn[aria-expanded="true"] {
+  background-color: rgba(255, 255, 255, 0.25);
+}
+
+.menu-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  min-width: 220px;
+  background-color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+  padding: 8px;
+  z-index: 210;
+  animation: loginPopupIn 0.15s ease-out;
+}
+
+.menu-dropdown[hidden] {
+  display: none;
+}
+
+.menu-dropdown a {
+  display: block;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: bold;
+  color: #4b1d5c;
+  text-decoration: none;
+  transition: background-color 0.15s;
+}
+
+.menu-dropdown a:hover {
+  background-color: #f0e6f5;
+}
+
+/* ── Mode sombre ── */
+body.dark-mode {
+  background-color: #1c1620;
+  color: #e9e2ee;
+}
+
+body.dark-mode .search-bar,
+body.dark-mode .filters-panel,
+body.dark-mode .stagiaire-card,
+body.dark-mode .login-popup,
+body.dark-mode .modal,
+body.dark-mode .form-col,
+body.dark-mode .menu-dropdown {
+  background-color: #2a2130;
+  border-color: #3d3145;
+}
+
+body.dark-mode .stagiaire-name,
+body.dark-mode .fiche-name,
+body.dark-mode .competence-nom,
+body.dark-mode .search-bar input,
+body.dark-mode .menu-dropdown a,
+body.dark-mode .filters-panel-title,
+body.dark-mode .filter-group label,
+body.dark-mode .login-popup-field label {
+  color: #e9e2ee;
+}
+
+body.dark-mode .field input,
+body.dark-mode .field select,
+body.dark-mode .filter-group select,
+body.dark-mode .login-popup-field input,
+body.dark-mode .search-bar input {
+  background-color: #382c40;
+  border-color: #4a3d54;
+  color: #e9e2ee;
+}
+
+body.dark-mode .tag-etablissement {
+  background-color: #3d3145;
+  color: #d8cfe0;
+}
+
+body.dark-mode .progress-track {
+  background-color: #3d3145;
+}
+
+body.dark-mode .fiche-empty,
+body.dark-mode .no-results,
+body.dark-mode .empty-state,
+body.dark-mode .progress-label {
+  color: #b8aec2;
+}
+
+body.dark-mode .menu-dropdown a:hover {
+  background-color: #3d3145;
+}
+
 /* ── Popup de connexion (ancré en haut à droite) ── */
 .login-popup {
   position: fixed;
