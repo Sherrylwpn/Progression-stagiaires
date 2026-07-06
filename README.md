@@ -75,3 +75,4 @@ evaluation_competence_humaine	Notes des compétences humaines par stagiaire
 evaluation_badge	Notes des badges par stagiaire
 
 
+![alt text](image.png)

@@ -9,6 +9,128 @@ $succes  = '';
 $idEdition = filter_input(INPUT_POST, 'id_stagiaire', FILTER_VALIDATE_INT)
     ?: filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 
+/**
+ * Compare l'état "avant" et "après" d'un stagiaire et retourne la liste des
+ * changements sous forme de puces (ex: "-Notation, -Compétence technique : Documentation"),
+ * pour alimenter le suivi des modifications (journal_modifications.details).
+ */
+function construireDetailsModification(
+    array $avant,
+    array $general,
+    array $notesTech,
+    array $notesHumaine,
+    array $notesBadge,
+    ?float $note,
+    array $nomsTech,
+    array $nomsHumaine,
+    array $nomsBadge
+): string {
+    $puces = [];
+
+    // ── Informations générales ──
+    $champsGeneraux = [
+        'nom'           => 'Nom',
+        'prenom'        => 'Prénom',
+        'classe'        => 'Classe',
+        'etablissement' => 'Établissement',
+        'date_debut'    => 'Date de début',
+        'date_fin'      => 'Date de fin',
+    ];
+    $champsModifies = [];
+    foreach ($champsGeneraux as $champ => $label) {
+        $ancienneValeur = $avant['general'][$champ] ?? null;
+        $nouvelleValeur = $general[$champ] ?? null;
+        if ((string) $ancienneValeur !== (string) $nouvelleValeur) {
+            $champsModifies[] = $label;
+        }
+    }
+    if (!empty($champsModifies)) {
+        $puces[] = '-Informations générales : ' . implode(', ', $champsModifies);
+    }
+
+    /**
+     * Fonction interne générique pour comparer un groupe d'évaluations
+     * (techniques, humaines ou badges) et lister les éléments modifiés.
+     */
+    $comparerGroupe = function (array $avantGroupe, array $apresGroupe, array $noms, int $max) {
+        $modifies = [];
+        $ids = array_unique(array_map('intval', array_merge(array_keys($avantGroupe), array_keys($apresGroupe))));
+        foreach ($ids as $id) {
+            $ancien = $avantGroupe[$id] ?? 0;
+            $nouveau = isset($apresGroupe[$id]) ? (int) $apresGroupe[$id] : 0;
+            $nouveau = ($nouveau >= 1 && $nouveau <= $max) ? $nouveau : 0;
+            if ($ancien !== $nouveau) {
+                $modifies[] = $noms[$id] ?? ('#' . $id);
+            }
+        }
+        return $modifies;
+    };
+
+    $techModifiees = $comparerGroupe($avant['tech'], $notesTech, $nomsTech, 3);
+    if (!empty($techModifiees)) {
+        $puces[] = '-Compétence technique : ' . implode(', ', $techModifiees);
+    }
+
+    $humaineModifiees = $comparerGroupe($avant['humaine'], $notesHumaine, $nomsHumaine, 5);
+    if (!empty($humaineModifiees)) {
+        $puces[] = '-Compétence humaine : ' . implode(', ', $humaineModifiees);
+    }
+
+    $badgesModifies = $comparerGroupe($avant['badge'], $notesBadge, $nomsBadge, 3);
+    if (!empty($badgesModifies)) {
+        $puces[] = '-Badge : ' . implode(', ', $badgesModifies);
+    }
+
+    // ── Notation globale ──
+    if ($avant['note'] !== $note) {
+        $puces[] = '-Notation';
+    }
+
+    return implode(', ', $puces);
+}
+
+// ── Cartes id → nom, utilisées pour décrire précisément les modifications ──
+$pdoNoms     = getDB();
+$nomsTech    = $pdoNoms->query("SELECT id_competence_technique, nom FROM competence_technique")->fetchAll(PDO::FETCH_KEY_PAIR);
+$nomsHumaine = $pdoNoms->query("SELECT id_competence_humaine, nom FROM competence_humaine")->fetchAll(PDO::FETCH_KEY_PAIR);
+$nomsBadge   = $pdoNoms->query("SELECT id_badge, nom FROM badge")->fetchAll(PDO::FETCH_KEY_PAIR);
+
+// ── Capture de l'état AVANT modification (pour le suivi des modifications) ──
+// On ne le fait qu'à la soumission (POST) d'une fiche existante, avant toute écriture.
+$avant = null;
+if ($idEdition && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $stmt = $pdoNoms->prepare("SELECT * FROM stagiaire WHERE id_stagiaire = ?");
+    $stmt->execute([$idEdition]);
+    $avantStagiaire = $stmt->fetch();
+
+    if ($avantStagiaire) {
+        $avant = ['general' => $avantStagiaire, 'tech' => [], 'humaine' => [], 'badge' => [], 'note' => null];
+
+        $stmt = $pdoNoms->prepare("SELECT id_competence_technique, niveau FROM evaluation_competence_technique WHERE id_stagiaire = ?");
+        $stmt->execute([$idEdition]);
+        foreach ($stmt->fetchAll() as $row) {
+            $avant['tech'][(int) $row['id_competence_technique']] = (int) $row['niveau'];
+        }
+
+        $stmt = $pdoNoms->prepare("SELECT id_competence_humaine, niveau FROM evaluation_competence_humaine WHERE id_stagiaire = ?");
+        $stmt->execute([$idEdition]);
+        foreach ($stmt->fetchAll() as $row) {
+            $avant['humaine'][(int) $row['id_competence_humaine']] = (int) $row['niveau'];
+        }
+
+        $stmt = $pdoNoms->prepare("SELECT id_badge, niveau FROM evaluation_badge WHERE id_stagiaire = ?");
+        $stmt->execute([$idEdition]);
+        foreach ($stmt->fetchAll() as $row) {
+            $avant['badge'][(int) $row['id_badge']] = (int) $row['niveau'];
+        }
+
+        $stmt = $pdoNoms->prepare("SELECT note FROM notation WHERE id_stagiaire = ?");
+        $stmt->execute([$idEdition]);
+        $noteRow = $stmt->fetch();
+        $avant['note'] = $noteRow ? (float) $noteRow['note'] : null;
+    }
+}
+
 // ── Traitement de la soumission ──
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
@@ -168,10 +290,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->commit();
 
+            // ── Construction du détail précis des changements pour le suivi des modifications ──
+            $details = '';
+            if ($idEdition && $avant) {
+                $details = construireDetailsModification(
+                    $avant,
+                    [
+                        'nom'           => $nom,
+                        'prenom'        => $prenom,
+                        'classe'        => $classe,
+                        'etablissement' => $etablissement,
+                        'date_debut'    => $dateDebut !== '' ? $dateDebut : null,
+                        'date_fin'      => $dateFin !== '' ? $dateFin : null,
+                    ],
+                    $notesTech,
+                    $notesHumaine,
+                    $notesBadge,
+                    $note !== '' ? (float) $note : null,
+                    $nomsTech,
+                    $nomsHumaine,
+                    $nomsBadge
+                );
+            }
+
             logAction(
                 $idEdition ? 'modification' : 'creation',
                 (int) $idStagiaire,
-                $nom . ' ' . $prenom
+                $nom . ' ' . $prenom,
+                $details
             );
 
             $succes = $idEdition ? "Stagiaire modifié avec succès." : "Stagiaire enregistré avec succès.";

@@ -122,7 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           Retrouvez l'historique de toutes les créations, modifications et suppressions
           effectuées sur les fiches stagiaires.
         </p>
-        <a href="historique.php" class="fiche-btn fiche-btn-edit" style="width:100%;">Voir le suivi des modifications</a>
+        <a href="suivi_modifications.php" class="fiche-btn fiche-btn-edit" style="width:100%;">Voir le suivi des modifications</a>
       </section>
 
     </div>

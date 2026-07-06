@@ -44,6 +44,7 @@ rsort($annees); // les plus récentes en premier
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Suivi stagiaire</title>
   <link rel="stylesheet" href="index.css">
+  <link rel="stylesheet" href="parametres.css">
 </head>
 <body class="<?= bodyClass() ?>">
   <div id="toast" class="toast"></div>
@@ -52,28 +53,82 @@ rsort($annees); // les plus récentes en premier
     <h1>Suivi stagiaire</h1>
     <nav class="header-auth">
       <?php if (!empty($_SESSION['user_id'])): ?>
-        <span class="header-user">Bonjour, <?= htmlspecialchars($_SESSION['user_nom']) ?></span>
-
-        <div class="menu-wrapper">
-          <button type="button" class="menu-btn" id="menuBtn" aria-expanded="false" aria-controls="menuDropdown" aria-label="Menu">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-              <line x1="4" y1="7" x2="20" y2="7"></line>
-              <line x1="4" y1="12" x2="20" y2="12"></line>
-              <line x1="4" y1="17" x2="20" y2="17"></line>
-            </svg>
-          </button>
-          <div class="menu-dropdown" id="menuDropdown" hidden>
-            <a href="parametres.php">Paramètres</a>
-            <a href="historique.php">Suivi des modifications</a>
-          </div>
-        </div>
-
-        <a href="logout.php" class="auth-btn">Déconnexion</a>
+        <span class="header-user"><?= htmlspecialchars($_SESSION['user_nom']) ?></span>
+        <button type="button" class="hamburger-btn" id="menuBtn" aria-expanded="false" aria-controls="menuPopup" aria-label="Ouvrir le menu">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
       <?php else: ?>
         <button type="button" class="auth-btn" id="loginBtn" aria-expanded="false" aria-controls="loginPopup">Connexion</button>
       <?php endif; ?>
     </nav>
   </header>
+
+  <?php if (!empty($_SESSION['user_id'])): ?>
+  <!-- Popup du menu hamburger, ancré en haut à droite -->
+  <div class="menu-popup" id="menuPopup" hidden>
+    <div class="menu-popup-header">
+      <h3>Menu</h3>
+      <button type="button" class="menu-popup-close" id="menuPopupClose" aria-label="Fermer">&times;</button>
+    </div>
+
+    <a href="index.php" class="menu-popup-item">Accueil</a>
+    <a href="suivi_modifications.php" class="menu-popup-item">Suivi des modifications</a>
+    <button type="button" class="menu-popup-item" id="securityMenuBtn">Sécurité du compte</button>
+    <button type="button" class="menu-popup-item" id="displayMenuBtn">Affichage</button>
+    <a href="logout.php" class="menu-popup-item menu-popup-item-danger">Déconnexion</a>
+  </div>
+  <?php endif; ?>
+
+  <?php if (!empty($_SESSION['user_id'])): ?>
+  <!-- Popup "Sécurité du compte" : changement de mot de passe -->
+  <div class="login-popup" id="securityPopup" hidden>
+    <div class="login-popup-header">
+      <h3>Sécurité du compte</h3>
+      <button type="button" class="login-popup-close" id="securityPopupClose" aria-label="Fermer">&times;</button>
+    </div>
+
+    <div class="login-popup-error" id="securityPopupError" hidden></div>
+
+    <form id="securityPopupForm">
+      <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+
+      <div class="login-popup-field">
+        <label for="securityAncien">Mot de passe actuel</label>
+        <input type="password" id="securityAncien" name="ancien_mot_de_passe" placeholder="Mot de passe actuel" required autocomplete="current-password">
+      </div>
+      <div class="login-popup-field">
+        <label for="securityNouveau">Nouveau mot de passe</label>
+        <input type="password" id="securityNouveau" name="nouveau_mot_de_passe" placeholder="8 caractères minimum" minlength="8" required autocomplete="new-password">
+      </div>
+      <div class="login-popup-field">
+        <label for="securityConfirme">Confirmer le nouveau mot de passe</label>
+        <input type="password" id="securityConfirme" name="confirme_mot_de_passe" placeholder="Retapez le nouveau mot de passe" minlength="8" required autocomplete="new-password">
+      </div>
+
+      <button type="submit" class="login-popup-submit" id="securityPopupSubmit">Changer le mot de passe</button>
+    </form>
+  </div>
+
+  <!-- Popup "Affichage" : mode sombre -->
+  <div class="login-popup" id="displayPopup" hidden>
+    <div class="login-popup-header">
+      <h3>Affichage</h3>
+      <button type="button" class="login-popup-close" id="displayPopupClose" aria-label="Fermer">&times;</button>
+    </div>
+
+    <div class="field field-switch">
+      <label for="displayModeSombre">Mode sombre</label>
+      <label class="switch">
+        <input type="checkbox" id="displayModeSombre" <?= !empty($_SESSION['mode_sombre']) ? 'checked' : '' ?>>
+        <span class="switch-slider"></span>
+      </label>
+    </div>
+  </div>
+  <?php endif; ?>
 
   <?php if (empty($_SESSION['user_id'])): ?>
   <!-- Popup de connexion, ancré en haut à droite -->
@@ -400,37 +455,6 @@ rsort($annees); // les plus récentes en premier
       if (e.key === 'Escape' && !modalOverlay.hasAttribute('hidden')) closeFiche();
     });
 
-    // ── Menu (3 traits) : paramètres / suivi des modifications ──
-    (function() {
-      const menuBtn = document.getElementById('menuBtn');
-      const menuDropdown = document.getElementById('menuDropdown');
-      if (!menuBtn || !menuDropdown) return;
-
-      function openMenu() {
-        menuDropdown.removeAttribute('hidden');
-        menuBtn.setAttribute('aria-expanded', 'true');
-      }
-      function closeMenu() {
-        menuDropdown.setAttribute('hidden', '');
-        menuBtn.setAttribute('aria-expanded', 'false');
-      }
-
-      menuBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        menuDropdown.hasAttribute('hidden') ? openMenu() : closeMenu();
-      });
-
-      document.addEventListener('click', (e) => {
-        if (!menuDropdown.hasAttribute('hidden') && !menuDropdown.contains(e.target) && e.target !== menuBtn) {
-          closeMenu();
-        }
-      });
-
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !menuDropdown.hasAttribute('hidden')) closeMenu();
-      });
-    })();
-
     // ── Popup de connexion (haut à droite) ──
     (function() {
       const loginBtn = document.getElementById('loginBtn');
@@ -503,6 +527,190 @@ rsort($annees); // les plus récentes en premier
               loginPopupError.hidden = false;
               loginPopupSubmit.disabled = false;
               loginPopupSubmit.textContent = 'Se connecter';
+            });
+        });
+      }
+    })();
+
+    // ── Popup du menu hamburger (haut à droite) ──
+    (function() {
+      const menuBtn = document.getElementById('menuBtn');
+      const menuPopup = document.getElementById('menuPopup');
+      if (!menuBtn || !menuPopup) return;
+
+      const menuPopupClose = document.getElementById('menuPopupClose');
+
+      function openMenu() {
+        menuPopup.removeAttribute('hidden');
+        menuBtn.setAttribute('aria-expanded', 'true');
+      }
+
+      function closeMenu() {
+        menuPopup.setAttribute('hidden', '');
+        menuBtn.setAttribute('aria-expanded', 'false');
+      }
+
+      menuBtn.addEventListener('click', () => {
+        if (menuPopup.hasAttribute('hidden')) {
+          openMenu();
+        } else {
+          closeMenu();
+        }
+      });
+
+      if (menuPopupClose) menuPopupClose.addEventListener('click', closeMenu);
+
+      document.addEventListener('click', (e) => {
+        if (!menuPopup.hasAttribute('hidden') && !menuPopup.contains(e.target) && e.target !== menuBtn && !menuBtn.contains(e.target)) {
+          closeMenu();
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !menuPopup.hasAttribute('hidden')) closeMenu();
+      });
+    })();
+
+    // ── Pop-up "Sécurité du compte" (changement de mot de passe) ──
+    (function() {
+      const securityMenuBtn = document.getElementById('securityMenuBtn');
+      const securityPopup = document.getElementById('securityPopup');
+      if (!securityMenuBtn || !securityPopup) return;
+
+      const securityPopupClose = document.getElementById('securityPopupClose');
+      const securityPopupForm = document.getElementById('securityPopupForm');
+      const securityPopupError = document.getElementById('securityPopupError');
+      const securityPopupSubmit = document.getElementById('securityPopupSubmit');
+      const menuPopupEl = document.getElementById('menuPopup');
+      const menuBtnEl = document.getElementById('menuBtn');
+
+      function openSecurityPopup() {
+        if (menuPopupEl) menuPopupEl.setAttribute('hidden', '');
+        if (menuBtnEl) menuBtnEl.setAttribute('aria-expanded', 'false');
+        securityPopupError.hidden = true;
+        securityPopupForm.reset();
+        securityPopup.removeAttribute('hidden');
+        document.getElementById('securityAncien').focus();
+      }
+
+      function closeSecurityPopup() {
+        securityPopup.setAttribute('hidden', '');
+      }
+
+      securityMenuBtn.addEventListener('click', openSecurityPopup);
+      if (securityPopupClose) securityPopupClose.addEventListener('click', closeSecurityPopup);
+
+      document.addEventListener('click', (e) => {
+        if (!securityPopup.hasAttribute('hidden') && !securityPopup.contains(e.target) && e.target !== securityMenuBtn) {
+          closeSecurityPopup();
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !securityPopup.hasAttribute('hidden')) closeSecurityPopup();
+      });
+
+      if (securityPopupForm) {
+        securityPopupForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+
+          securityPopupError.hidden = true;
+          securityPopupSubmit.disabled = true;
+          securityPopupSubmit.textContent = 'Enregistrement…';
+
+          fetch('securite_compte.php', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: new FormData(securityPopupForm),
+          })
+            .then(response => response.json())
+            .then(data => {
+              securityPopupSubmit.disabled = false;
+              securityPopupSubmit.textContent = 'Changer le mot de passe';
+
+              if (data.success) {
+                closeSecurityPopup();
+                const toast = document.getElementById('toast');
+                toast.textContent = data.succes || 'Mot de passe mis à jour avec succès.';
+                toast.classList.add('show');
+                setTimeout(() => toast.classList.remove('show'), 2500);
+              } else {
+                securityPopupError.textContent = data.erreur || 'Erreur lors du changement de mot de passe.';
+                securityPopupError.hidden = false;
+              }
+            })
+            .catch(() => {
+              securityPopupSubmit.disabled = false;
+              securityPopupSubmit.textContent = 'Changer le mot de passe';
+              securityPopupError.textContent = 'Une erreur est survenue. Merci de réessayer.';
+              securityPopupError.hidden = false;
+            });
+        });
+      }
+    })();
+
+    // ── Pop-up "Affichage" (mode sombre) ──
+    (function() {
+      const displayMenuBtn = document.getElementById('displayMenuBtn');
+      const displayPopup = document.getElementById('displayPopup');
+      if (!displayMenuBtn || !displayPopup) return;
+
+      const displayPopupClose = document.getElementById('displayPopupClose');
+      const displayModeSombre = document.getElementById('displayModeSombre');
+      const menuPopupEl = document.getElementById('menuPopup');
+      const menuBtnEl = document.getElementById('menuBtn');
+      const csrfToken = <?= json_encode(csrfToken()) ?>;
+
+      function openDisplayPopup() {
+        if (menuPopupEl) menuPopupEl.setAttribute('hidden', '');
+        if (menuBtnEl) menuBtnEl.setAttribute('aria-expanded', 'false');
+        displayPopup.removeAttribute('hidden');
+      }
+
+      function closeDisplayPopup() {
+        displayPopup.setAttribute('hidden', '');
+      }
+
+      displayMenuBtn.addEventListener('click', openDisplayPopup);
+      if (displayPopupClose) displayPopupClose.addEventListener('click', closeDisplayPopup);
+
+      document.addEventListener('click', (e) => {
+        if (!displayPopup.hasAttribute('hidden') && !displayPopup.contains(e.target) && e.target !== displayMenuBtn) {
+          closeDisplayPopup();
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !displayPopup.hasAttribute('hidden')) closeDisplayPopup();
+      });
+
+      if (displayModeSombre) {
+        displayModeSombre.addEventListener('change', () => {
+          const active = displayModeSombre.checked;
+
+          // Application immédiate, sans attendre la réponse du serveur
+          document.body.classList.toggle('dark-mode', active);
+
+          const formData = new FormData();
+          formData.append('csrf_token', csrfToken);
+          if (active) formData.append('mode_sombre', '1');
+
+          fetch('preference_affichage.php', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: formData,
+          })
+            .then(response => response.json())
+            .then(data => {
+              if (!data.success) {
+                // En cas d'échec, on revient à l'état précédent
+                displayModeSombre.checked = !active;
+                document.body.classList.toggle('dark-mode', !active);
+              }
+            })
+            .catch(() => {
+              displayModeSombre.checked = !active;
+              document.body.classList.toggle('dark-mode', !active);
             });
         });
       }

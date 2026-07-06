@@ -65,7 +65,7 @@ function renderStars(?int $niveau, int $max = 5): string
     $html = '<div class="stars" role="img" aria-label="' . $niveau . ' sur ' . $max . '">';
     for ($i = 1; $i <= $max; $i++) {
         $filled = $i <= $niveau;
-        $couleur = $filled ? '#f0a500' : '#e2e2e2';
+        $couleur = $filled ? '#b8862e' : '#e5dde8';
         $html .= '<svg class="star ' . ($filled ? 'star-filled' : 'star-empty') . '" width="18" height="18" viewBox="0 0 24 24" style="fill:' . $couleur . ';flex-shrink:0;">'
                . '<polygon points="12,2 15,9 22,9 16.5,13.5 18.5,21 12,17 5.5,21 7.5,13.5 2,9 9,9"></polygon>'
                . '</svg>';
