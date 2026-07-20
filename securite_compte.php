@@ -27,29 +27,46 @@ $ancien   = $_POST['ancien_mot_de_passe']   ?? '';
 $nouveau  = $_POST['nouveau_mot_de_passe']  ?? '';
 $confirme = $_POST['confirme_mot_de_passe'] ?? '';
 
-$pdo = getDB();
-$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
-$stmt->execute([$_SESSION['user_id']]);
-$utilisateur = $stmt->fetch();
+// Deux modes possibles :
+// - 'soi' (par défaut) : l'utilisateur change SON PROPRE mot de passe, ancien requis.
+// - 'admin_reinit' : un admin réinitialise le mot de passe d'un AUTRE admin qui a
+//   oublié le sien ; pas d'ancien mot de passe demandé, réservé au rôle admin.
+$mode = $_POST['mode'] ?? 'soi';
 
-if (!$utilisateur || !password_verify($ancien, $utilisateur['mot_de_passe'])) {
-    echo json_encode(['success' => false, 'erreur' => "L'ancien mot de passe est incorrect."]);
-    exit;
-}
-if (mb_strlen($nouveau) < 8) {
-    echo json_encode(['success' => false, 'erreur' => "Le nouveau mot de passe doit contenir au moins 8 caractères."]);
-    exit;
-}
-if ($nouveau !== $confirme) {
-    echo json_encode(['success' => false, 'erreur' => "La confirmation ne correspond pas au nouveau mot de passe."]);
-    exit;
-}
-if ($nouveau === $ancien) {
-    echo json_encode(['success' => false, 'erreur' => "Le nouveau mot de passe doit être différent de l'ancien."]);
-    exit;
-}
+// Toute la logique métier est entourée d'un try/catch : sans ça, la moindre
+// exception (ex. PDOException) produit une page d'erreur PHP à la place du
+// JSON attendu, et le fetch() du popup échoue avec un message générique
+// ("Une erreur est survenue") sans qu'on sache pourquoi. Le détail réel part
+// dans les logs serveur (même principe que formulaire_stagiaires.php).
+try {
+    if ($mode === 'admin_reinit') {
+        // On ne réutilise pas requireRole() ici : elle répond en texte brut avec un
+        // exit(), ce qui casserait le fetch().then(r => r.json()) côté client. On
+        // reproduit donc la même vérification, avec une réponse JSON cohérente.
+        if (($_SESSION['role'] ?? '') !== 'admin') {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'erreur' => "Accès réservé aux administrateurs."]);
+            exit;
+        }
 
-$hash = password_hash($nouveau, PASSWORD_DEFAULT);
-$pdo->prepare("UPDATE users SET mot_de_passe = ? WHERE id = ?")->execute([$hash, $_SESSION['user_id']]);
+        $idCible = filter_input(INPUT_POST, 'id_cible', FILTER_VALIDATE_INT);
+        if (!$idCible) {
+            echo json_encode(['success' => false, 'erreur' => "Merci de sélectionner un compte administrateur."]);
+            exit;
+        }
 
-echo json_encode(['success' => true, 'succes' => 'Mot de passe mis à jour avec succès.']);
+        $resultat = reinitialiserMotDePasseAdmin((int) $_SESSION['user_id'], $idCible, $nouveau, $confirme);
+    } else {
+        $resultat = changerMotDePasse((int) $_SESSION['user_id'], $ancien, $nouveau, $confirme);
+    }
+
+    if ($resultat['succes']) {
+        echo json_encode(['success' => true, 'succes' => $resultat['message']]);
+    } else {
+        echo json_encode(['success' => false, 'erreur' => $resultat['message']]);
+    }
+} catch (Throwable $e) {
+    error_log('securite_compte.php : erreur — ' . $e->getMessage());
+    http_response_code(500);
+    echo json_encode(['success' => false, 'erreur' => "Une erreur serveur est survenue. Merci de réessayer ou de contacter un administrateur si le problème persiste."]);
+}

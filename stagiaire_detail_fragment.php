@@ -1,4 +1,11 @@
 <?php
+/**
+ * stagiaire_detail_fragment.php
+ * Anciennement comp.php (renommé, correction 3.21 : le nom ne disait rien de
+ * son rôle). Retourne un FRAGMENT HTML (pas une page complète), chargé en
+ * fetch() par index.php pour afficher la fiche détaillée d'un stage dans le
+ * panneau latéral, sans rechargement de page.
+ */
 require_once 'config.php';
 requireAuth(); // Correction 3.3 : la fiche d'un stagiaire ne doit pas être consultable sans connexion
 
@@ -147,7 +154,7 @@ $initiales = mb_strtoupper(mb_substr($stage['prenom'], 0, 1) . mb_substr($stage[
 <div class="fiche-header">
   <div class="stagiaire-avatar fiche-avatar"><?= htmlspecialchars($initiales) ?></div>
   <div class="fiche-header-info">
-    <h2 class="fiche-name"><?= htmlspecialchars($stage['nom']) ?> <?= htmlspecialchars($stage['prenom']) ?></h2>
+    <h2 class="fiche-name" id="modalTitle"><?= htmlspecialchars($stage['nom']) ?> <?= htmlspecialchars($stage['prenom']) ?></h2>
     <div class="stagiaire-tags">
       <span class="tag tag-classe"><?= htmlspecialchars($stage['classe']) ?></span>
       <span class="tag tag-etablissement"><?= htmlspecialchars($stage['etablissement']) ?></span>

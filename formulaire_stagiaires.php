@@ -1,18 +1,35 @@
 <?php
 require_once 'config.php';
-requireAuth(); // Seuls les 2 utilisateurs connectés peuvent accéder à ce formulaire
+requireAuth(); // Seuls les utilisateurs connectés peuvent accéder à ce formulaire
 
-$erreur  = '';
-$succes  = '';
+$erreur = '';
+$succes = '';
 
-// Mode édition si un id est fourni (en GET pour l'affichage, en POST pour la soumission)
-$idEdition = filter_input(INPUT_POST, 'id_stagiaire', FILTER_VALIDATE_INT)
+// Mode édition si un id de STAGE est fourni (en GET pour l'affichage, en POST pour la soumission).
+// Correction 3.4 : une fiche correspond désormais à un stage, pas directement à une personne
+// (une personne peut avoir plusieurs stages).
+$idEdition = filter_input(INPUT_POST, 'id_stage', FILTER_VALIDATE_INT)
     ?: filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 
+$pdo = getDB();
+
+// ── Listes de référence chargées depuis la base (correction 3.9 : plus d'ENUM ni de tableaux PHP codés en dur) ──
+$classesRef            = $pdo->query("SELECT id_classe, nom FROM classe_ref ORDER BY ordre, nom")->fetchAll();
+$etablissementsRef     = $pdo->query("SELECT id_etablissement, nom FROM etablissement_ref ORDER BY nom")->fetchAll();
+$competencesTechniques = $pdo->query("SELECT id_competence_technique, nom FROM competence_technique ORDER BY nom")->fetchAll();
+$competencesHumaines   = $pdo->query("SELECT id_competence_humaine, nom FROM competence_humaine ORDER BY nom")->fetchAll();
+$badges                = $pdo->query("SELECT id_badge, nom FROM badge ORDER BY nom")->fetchAll();
+
+$nomsClasse        = array_column($classesRef, 'nom', 'id_classe');
+$nomsEtablissement = array_column($etablissementsRef, 'nom', 'id_etablissement');
+$nomsTech          = array_column($competencesTechniques, 'nom', 'id_competence_technique');
+$nomsHumaine       = array_column($competencesHumaines, 'nom', 'id_competence_humaine');
+$nomsBadge         = array_column($badges, 'nom', 'id_badge');
+
 /**
- * Compare l'état "avant" et "après" d'un stagiaire et retourne la liste des
- * changements sous forme de puces (ex: "-Notation, -Compétence technique : Documentation"),
- * pour alimenter le suivi des modifications (journal_modifications.details).
+ * Compare l'état "avant" et "après" d'un stage et retourne la liste des
+ * changements sous forme de puces, pour alimenter le suivi des modifications
+ * (journal_modifications.details).
  */
 function construireDetailsModification(
     array $avant,
@@ -23,11 +40,26 @@ function construireDetailsModification(
     ?float $note,
     array $nomsTech,
     array $nomsHumaine,
-    array $nomsBadge
+    array $nomsBadge,
+    ?string $commentaireAvant = null,
+    ?string $commentaireApres = null
 ): string {
     $puces = [];
 
+    /**
+     * Formate une valeur pour l'affichage dans le journal ("(vide)" plutôt
+     * qu'une chaîne vide illisible).
+     */
+    $afficher = function ($valeur): string {
+        $valeur = (string) ($valeur ?? '');
+        return $valeur === '' ? '(vide)' : $valeur;
+    };
+
     // ── Informations générales ──
+    // Correction 3.16 : le journal indiquait auparavant seulement le NOM du champ
+    // modifié ("Classe"), sans dire quelle était l'ancienne valeur ni la nouvelle.
+    // On conserve désormais les deux, ce qui permet de reconstruire une évolution
+    // ou de justifier une valeur précédente sans devoir recouper avec d'autres sources.
     $champsGeneraux = [
         'nom'           => 'Nom',
         'prenom'        => 'Prénom',
@@ -41,16 +73,17 @@ function construireDetailsModification(
         $ancienneValeur = $avant['general'][$champ] ?? null;
         $nouvelleValeur = $general[$champ] ?? null;
         if ((string) $ancienneValeur !== (string) $nouvelleValeur) {
-            $champsModifies[] = $label;
+            $champsModifies[] = $label . ' : ' . $afficher($ancienneValeur) . ' → ' . $afficher($nouvelleValeur);
         }
     }
     if (!empty($champsModifies)) {
-        $puces[] = '-Informations générales : ' . implode(', ', $champsModifies);
+        $puces[] = '-Informations générales : ' . implode(' ; ', $champsModifies);
     }
 
     /**
-     * Fonction interne générique pour comparer un groupe d'évaluations
-     * (techniques, humaines ou badges) et lister les éléments modifiés.
+     * Compare un groupe d'évaluations (techniques, humaines ou badges) entre la
+     * dernière séance enregistrée et la nouvelle saisie, et liste les éléments
+     * modifiés avec leur niveau avant/après (correction 3.16).
      */
     $comparerGroupe = function (array $avantGroupe, array $apresGroupe, array $noms, int $max) {
         $modifies = [];
@@ -60,7 +93,7 @@ function construireDetailsModification(
             $nouveau = isset($apresGroupe[$id]) ? (int) $apresGroupe[$id] : 0;
             $nouveau = ($nouveau >= 1 && $nouveau <= $max) ? $nouveau : 0;
             if ($ancien !== $nouveau) {
-                $modifies[] = $noms[$id] ?? ('#' . $id);
+                $modifies[] = ($noms[$id] ?? ('#' . $id)) . ' : ' . $ancien . '→' . $nouveau;
             }
         }
         return $modifies;
@@ -83,64 +116,127 @@ function construireDetailsModification(
 
     // ── Notation globale ──
     if ($avant['note'] !== $note) {
-        $puces[] = '-Notation';
+        $puces[] = '-Notation : ' . $afficher($avant['note']) . ' → ' . $afficher($note);
+    }
+
+    // ── Commentaire (correction 3.15 : le champ existait en base sans être
+    // lu ni écrit nulle part ; il est désormais exposé dans le formulaire) ──
+    if ((string) $commentaireAvant !== (string) $commentaireApres) {
+        $puces[] = '-Commentaire modifié';
+    }
+
+    if (empty($puces)) {
+        $puces[] = '-Nouvelle séance d\'évaluation (aucun changement de niveau détecté)';
     }
 
     return implode(', ', $puces);
 }
 
-// ── Cartes id → nom, utilisées pour décrire précisément les modifications ──
-$pdoNoms     = getDB();
-$nomsTech    = $pdoNoms->query("SELECT id_competence_technique, nom FROM competence_technique")->fetchAll(PDO::FETCH_KEY_PAIR);
-$nomsHumaine = $pdoNoms->query("SELECT id_competence_humaine, nom FROM competence_humaine")->fetchAll(PDO::FETCH_KEY_PAIR);
-$nomsBadge   = $pdoNoms->query("SELECT id_badge, nom FROM badge")->fetchAll(PDO::FETCH_KEY_PAIR);
+/**
+ * Charge l'état "avant" d'un stage (infos générales + niveaux de la dernière
+ * évaluation) pour permettre la comparaison lors d'une modification.
+ */
+function chargerEtatStage(PDO $pdo, int $idStage, array $nomsClasse, array $nomsEtablissement): ?array
+{
+    $stmt = $pdo->prepare(
+        "SELECT st.id_stage, st.id_classe, st.id_etablissement, st.date_debut, st.date_fin,
+                s.id_stagiaire, s.nom, s.prenom
+         FROM stage st JOIN stagiaire s ON s.id_stagiaire = st.id_stagiaire
+         WHERE st.id_stage = ?"
+    );
+    $stmt->execute([$idStage]);
+    $stage = $stmt->fetch();
+    if (!$stage) {
+        return null;
+    }
+
+    $general = [
+        'nom'           => $stage['nom'],
+        'prenom'        => $stage['prenom'],
+        'classe'        => $nomsClasse[$stage['id_classe']] ?? '',
+        'etablissement' => $nomsEtablissement[$stage['id_etablissement']] ?? '',
+        'date_debut'    => $stage['date_debut'],
+        'date_fin'      => $stage['date_fin'],
+    ];
+
+    $tech = $humaine = $badge = [];
+    $note = null;
+    $commentaire = null;
+
+    // Correction 3.15 : `commentaire` existait en base (table evaluation) sans être
+    // ni lu ni écrit nulle part dans l'application. On le charge désormais avec le
+    // reste de l'état de la dernière évaluation.
+    $stmt = $pdo->prepare("SELECT id_evaluation, note, commentaire FROM evaluation WHERE id_stage = ? ORDER BY date_evaluation DESC, id_evaluation DESC LIMIT 1");
+    $stmt->execute([$idStage]);
+    $derniere = $stmt->fetch();
+
+    if ($derniere) {
+        $note = $derniere['note'] !== null ? (float) $derniere['note'] : null;
+        $commentaire = $derniere['commentaire'];
+        $idEval = (int) $derniere['id_evaluation'];
+
+        $stmt = $pdo->prepare("SELECT id_competence_technique, niveau FROM evaluation_competence_technique WHERE id_evaluation = ?");
+        $stmt->execute([$idEval]);
+        foreach ($stmt->fetchAll() as $row) {
+            $tech[(int) $row['id_competence_technique']] = (int) $row['niveau'];
+        }
+
+        $stmt = $pdo->prepare("SELECT id_competence_humaine, niveau FROM evaluation_competence_humaine WHERE id_evaluation = ?");
+        $stmt->execute([$idEval]);
+        foreach ($stmt->fetchAll() as $row) {
+            $humaine[(int) $row['id_competence_humaine']] = (int) $row['niveau'];
+        }
+
+        $stmt = $pdo->prepare("SELECT id_badge, niveau FROM evaluation_badge WHERE id_evaluation = ?");
+        $stmt->execute([$idEval]);
+        foreach ($stmt->fetchAll() as $row) {
+            $badge[(int) $row['id_badge']] = (int) $row['niveau'];
+        }
+    }
+
+    return [
+        'id_stagiaire' => (int) $stage['id_stagiaire'],
+        'general'      => $general,
+        'tech'         => $tech,
+        'humaine'      => $humaine,
+        'badge'        => $badge,
+        'note'         => $note,
+        'commentaire'  => $commentaire,
+    ];
+}
 
 // ── Capture de l'état AVANT modification (pour le suivi des modifications) ──
-// On ne le fait qu'à la soumission (POST) d'une fiche existante, avant toute écriture.
 $avant = null;
 if ($idEdition && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $stmt = $pdoNoms->prepare("SELECT * FROM stagiaire WHERE id_stagiaire = ?");
-    $stmt->execute([$idEdition]);
-    $avantStagiaire = $stmt->fetch();
-
-    if ($avantStagiaire) {
-        $avant = ['general' => $avantStagiaire, 'tech' => [], 'humaine' => [], 'badge' => [], 'note' => null];
-
-        $stmt = $pdoNoms->prepare("SELECT id_competence_technique, niveau FROM evaluation_competence_technique WHERE id_stagiaire = ?");
-        $stmt->execute([$idEdition]);
-        foreach ($stmt->fetchAll() as $row) {
-            $avant['tech'][(int) $row['id_competence_technique']] = (int) $row['niveau'];
-        }
-
-        $stmt = $pdoNoms->prepare("SELECT id_competence_humaine, niveau FROM evaluation_competence_humaine WHERE id_stagiaire = ?");
-        $stmt->execute([$idEdition]);
-        foreach ($stmt->fetchAll() as $row) {
-            $avant['humaine'][(int) $row['id_competence_humaine']] = (int) $row['niveau'];
-        }
-
-        $stmt = $pdoNoms->prepare("SELECT id_badge, niveau FROM evaluation_badge WHERE id_stagiaire = ?");
-        $stmt->execute([$idEdition]);
-        foreach ($stmt->fetchAll() as $row) {
-            $avant['badge'][(int) $row['id_badge']] = (int) $row['niveau'];
-        }
-
-        $stmt = $pdoNoms->prepare("SELECT note FROM notation WHERE id_stagiaire = ?");
-        $stmt->execute([$idEdition]);
-        $noteRow = $stmt->fetch();
-        $avant['note'] = $noteRow ? (float) $noteRow['note'] : null;
-    }
+    $avant = chargerEtatStage($pdo, $idEdition, $nomsClasse, $nomsEtablissement);
 }
 
 // ── Traitement de la soumission ──
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
 
-    $nom           = trim($_POST['nom']           ?? '');
-    $prenom        = trim($_POST['prenom']         ?? '');
-    $classe        = trim($_POST['classe']         ?? '');
-    $etablissement = trim($_POST['etablissement']  ?? '');
-    $dateDebut     = trim($_POST['date_debut']     ?? '');
-    $dateFin       = trim($_POST['date_fin']       ?? '');
+    $nom             = trim($_POST['nom'] ?? '');
+    $prenom          = trim($_POST['prenom'] ?? '');
+    $idClasse        = filter_input(INPUT_POST, 'classe', FILTER_VALIDATE_INT);
+    $idEtablissement = filter_input(INPUT_POST, 'etablissement', FILTER_VALIDATE_INT);
+    $dateDebut       = trim($_POST['date_debut'] ?? '');
+    $dateFin         = trim($_POST['date_fin'] ?? '');
+
+    // ── Nouvel établissement saisi à la volée (option "+ Ajouter…" du select) ──
+    $nouvelEtablissement    = trim($_POST['etablissement_nouveau'] ?? '');
+    $creerNouvelEtablissement = false;
+    if (!$idEtablissement && $nouvelEtablissement !== '') {
+        // Recherche insensible à la casse pour éviter de créer un doublon si
+        // l'établissement existe déjà sous une casse légèrement différente.
+        $stmt = $pdo->prepare("SELECT id_etablissement FROM etablissement_ref WHERE LOWER(nom) = LOWER(:nom)");
+        $stmt->execute([':nom' => $nouvelEtablissement]);
+        $existant = $stmt->fetchColumn();
+        if ($existant) {
+            $idEtablissement = (int) $existant;
+        } else {
+            $creerNouvelEtablissement = true;
+        }
+    }
 
     $notesTech    = $_POST['tech']    ?? []; // [id_competence_technique => niveau]
     $notesHumaine = $_POST['humaine'] ?? []; // [id_competence_humaine   => niveau]
@@ -150,145 +246,119 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $note = trim($_POST['note'] ?? '');
     $note = str_replace(',', '.', $note);
 
-    if ($nom === '' || $prenom === '' || $classe === '' || $etablissement === '') {
+    // Commentaire de l'évaluateur (correction 3.15 : champ enfin exposé et utilisé)
+    $commentaire = trim($_POST['commentaire'] ?? '');
+
+    $classeValide        = $idClasse && isset($nomsClasse[$idClasse]);
+    $etablissementValide = $creerNouvelEtablissement || ($idEtablissement && isset($nomsEtablissement[$idEtablissement]));
+
+    if ($nom === '' || $prenom === '' || !$classeValide || !$etablissementValide) {
         $erreur = "Merci de remplir tous les champs des informations générales.";
     } elseif ($dateDebut !== '' && $dateFin !== '' && $dateFin < $dateDebut) {
         $erreur = "La date de fin de période ne peut pas être avant la date de début.";
     } elseif ($note !== '' && (!is_numeric($note) || (float) $note < 0 || (float) $note > 20)) {
         $erreur = "La notation doit être un nombre compris entre 0 et 20.";
     } else {
-        $pdo = getDB();
-
         try {
             $pdo->beginTransaction();
 
+            // Création effective du nouvel établissement (faite dans la transaction :
+            // si la suite échoue, l'établissement fraîchement créé est annulé aussi).
+            if ($creerNouvelEtablissement) {
+                $stmt = $pdo->prepare("INSERT INTO etablissement_ref (nom) VALUES (:nom)");
+                $stmt->execute([':nom' => $nouvelEtablissement]);
+                $idEtablissement = (int) $pdo->lastInsertId();
+                $nomsEtablissement[$idEtablissement] = $nouvelEtablissement;
+            }
+
             if ($idEdition) {
-                // 1) Mise à jour du stagiaire existant
-                $stmt = $pdo->prepare(
-                    "UPDATE stagiaire SET nom = :nom, prenom = :prenom, classe = :classe, etablissement = :etablissement,
-                     date_debut = :date_debut, date_fin = :date_fin
-                     WHERE id_stagiaire = :id"
-                );
-                $stmt->execute([
-                    ':nom'           => $nom,
-                    ':prenom'        => $prenom,
-                    ':classe'        => $classe,
-                    ':etablissement' => $etablissement,
+                // 1) Mise à jour de la personne et du stage existants
+                $idStagiaire = $avant['id_stagiaire'] ?? null;
+                if (!$idStagiaire) {
+                    throw new Exception("Stage introuvable.");
+                }
+
+                $pdo->prepare("UPDATE stagiaire SET nom = :nom, prenom = :prenom WHERE id_stagiaire = :id")
+                    ->execute([':nom' => $nom, ':prenom' => $prenom, ':id' => $idStagiaire]);
+
+                $pdo->prepare(
+                    "UPDATE stage SET id_classe = :classe, id_etablissement = :etablissement,
+                     date_debut = :date_debut, date_fin = :date_fin WHERE id_stage = :id"
+                )->execute([
+                    ':classe'        => $idClasse,
+                    ':etablissement' => $idEtablissement,
                     ':date_debut'    => $dateDebut !== '' ? $dateDebut : null,
                     ':date_fin'      => $dateFin !== '' ? $dateFin : null,
                     ':id'            => $idEdition,
                 ]);
-                $idStagiaire = $idEdition;
+                $idStage = $idEdition;
             } else {
-                // 1) Création du stagiaire
+                // 1) Création de la personne puis du stage
+                $stmt = $pdo->prepare("INSERT INTO stagiaire (nom, prenom) VALUES (:nom, :prenom)");
+                $stmt->execute([':nom' => $nom, ':prenom' => $prenom]);
+                $idStagiaire = $pdo->lastInsertId();
+
                 $stmt = $pdo->prepare(
-                    "INSERT INTO stagiaire (nom, prenom, classe, etablissement, date_debut, date_fin)
-                     VALUES (:nom, :prenom, :classe, :etablissement, :date_debut, :date_fin)"
+                    "INSERT INTO stage (id_stagiaire, id_classe, id_etablissement, date_debut, date_fin)
+                     VALUES (:id_stagiaire, :classe, :etablissement, :date_debut, :date_fin)"
                 );
                 $stmt->execute([
-                    ':nom'           => $nom,
-                    ':prenom'        => $prenom,
-                    ':classe'        => $classe,
-                    ':etablissement' => $etablissement,
+                    ':id_stagiaire'  => $idStagiaire,
+                    ':classe'        => $idClasse,
+                    ':etablissement' => $idEtablissement,
                     ':date_debut'    => $dateDebut !== '' ? $dateDebut : null,
                     ':date_fin'      => $dateFin !== '' ? $dateFin : null,
                 ]);
-                $idStagiaire = $pdo->lastInsertId();
+                $idStage = $pdo->lastInsertId();
             }
 
-            // 2) Évaluations compétences techniques
-            $stmtTech = $pdo->prepare(
-                "INSERT INTO evaluation_competence_technique (id_stagiaire, id_competence_technique, niveau)
-                 VALUES (:id_stagiaire, :id_competence, :niveau)
-                 ON DUPLICATE KEY UPDATE niveau = VALUES(niveau)"
-            );
-            $stmtTechDelete = $pdo->prepare(
-                "DELETE FROM evaluation_competence_technique WHERE id_stagiaire = :id_stagiaire AND id_competence_technique = :id_competence"
-            );
-            foreach ($notesTech as $idCompetence => $niveau) {
-                $niveau = (int) $niveau;
-                if ($niveau >= 1 && $niveau <= 3) {
-                    $stmtTech->execute([
-                        ':id_stagiaire' => $idStagiaire,
-                        ':id_competence' => (int) $idCompetence,
-                        ':niveau' => $niveau,
-                    ]);
-                } else {
-                    // Niveau remis à 0 : on supprime l'évaluation existante si elle existe
-                    $stmtTechDelete->execute([
-                        ':id_stagiaire' => $idStagiaire,
-                        ':id_competence' => (int) $idCompetence,
-                    ]);
+            // 2) Nouvelle séance d'évaluation (correction 3.1) : on ne remplace plus jamais
+            // la précédente, on crée une ligne datée si au moins une note a été saisie,
+            // ce qui permet de comparer plusieurs étapes du stage dans le temps.
+            $auMoinsUneNote = ($note !== '') || ($commentaire !== '');
+            if (!$auMoinsUneNote) {
+                foreach ([$notesTech, $notesHumaine, $notesBadge] as $groupe) {
+                    foreach ($groupe as $niveau) {
+                        if ((int) $niveau >= 1) {
+                            $auMoinsUneNote = true;
+                            break 2;
+                        }
+                    }
                 }
             }
 
-            // 3) Évaluations compétences humaines
-            $stmtHumaine = $pdo->prepare(
-                "INSERT INTO evaluation_competence_humaine (id_stagiaire, id_competence_humaine, niveau)
-                 VALUES (:id_stagiaire, :id_competence, :niveau)
-                 ON DUPLICATE KEY UPDATE niveau = VALUES(niveau)"
-            );
-            $stmtHumaineDelete = $pdo->prepare(
-                "DELETE FROM evaluation_competence_humaine WHERE id_stagiaire = :id_stagiaire AND id_competence_humaine = :id_competence"
-            );
-            foreach ($notesHumaine as $idCompetence => $niveau) {
-                $niveau = (int) $niveau;
-                if ($niveau >= 1 && $niveau <= 5) {
-                    $stmtHumaine->execute([
-                        ':id_stagiaire' => $idStagiaire,
-                        ':id_competence' => (int) $idCompetence,
-                        ':niveau' => $niveau,
-                    ]);
-                } else {
-                    $stmtHumaineDelete->execute([
-                        ':id_stagiaire' => $idStagiaire,
-                        ':id_competence' => (int) $idCompetence,
-                    ]);
-                }
-            }
-
-            // 4) Évaluations badges
-            $stmtBadge = $pdo->prepare(
-                "INSERT INTO evaluation_badge (id_stagiaire, id_badge, niveau)
-                 VALUES (:id_stagiaire, :id_badge, :niveau)
-                 ON DUPLICATE KEY UPDATE niveau = VALUES(niveau)"
-            );
-            $stmtBadgeDelete = $pdo->prepare(
-                "DELETE FROM evaluation_badge WHERE id_stagiaire = :id_stagiaire AND id_badge = :id_badge"
-            );
-            foreach ($notesBadge as $idBadge => $niveau) {
-                $niveau = (int) $niveau;
-                if ($niveau >= 1 && $niveau <= 3) {
-                    $stmtBadge->execute([
-                        ':id_stagiaire' => $idStagiaire,
-                        ':id_badge' => (int) $idBadge,
-                        ':niveau' => $niveau,
-                    ]);
-                } else {
-                    $stmtBadgeDelete->execute([
-                        ':id_stagiaire' => $idStagiaire,
-                        ':id_badge' => (int) $idBadge,
-                    ]);
-                }
-            }
-
-            // 5) Notation globale (/20)
-            if ($note !== '') {
-                $stmtNote = $pdo->prepare(
-                    "INSERT INTO notation (id_stagiaire, note) VALUES (:id_stagiaire, :note)
-                     ON DUPLICATE KEY UPDATE note = VALUES(note)"
+            if ($auMoinsUneNote) {
+                $stmt = $pdo->prepare(
+                    "INSERT INTO evaluation (id_stage, id_evaluateur, note, commentaire) VALUES (:id_stage, :id_evaluateur, :note, :commentaire)"
                 );
-                $stmtNote->execute([
-                    ':id_stagiaire' => $idStagiaire,
-                    ':note'         => (float) $note,
+                $stmt->execute([
+                    ':id_stage'      => $idStage,
+                    ':id_evaluateur' => $_SESSION['user_id'] ?? null,
+                    ':note'          => $note !== '' ? (float) $note : null,
+                    ':commentaire'   => $commentaire !== '' ? $commentaire : null,
                 ]);
-            } else {
-                // Champ vidé : on supprime la notation existante s'il y en a une
-                $pdo->prepare("DELETE FROM notation WHERE id_stagiaire = :id_stagiaire")
-                    ->execute([':id_stagiaire' => $idStagiaire]);
-            }
+                $idEvaluation = (int) $pdo->lastInsertId();
 
-            $pdo->commit();
+                $insererNiveaux = function (array $notes, string $table, string $colonne, int $max) use ($pdo, $idEvaluation) {
+                    $stmt = $pdo->prepare(
+                        "INSERT INTO {$table} (id_evaluation, {$colonne}, niveau) VALUES (:id_evaluation, :id_item, :niveau)"
+                    );
+                    foreach ($notes as $idItem => $niveau) {
+                        $niveau = (int) $niveau;
+                        if ($niveau >= 1 && $niveau <= $max) {
+                            $stmt->execute([
+                                ':id_evaluation' => $idEvaluation,
+                                ':id_item'       => (int) $idItem,
+                                ':niveau'        => $niveau,
+                            ]);
+                        }
+                    }
+                };
+
+                $insererNiveaux($notesTech, 'evaluation_competence_technique', 'id_competence_technique', 3);
+                $insererNiveaux($notesHumaine, 'evaluation_competence_humaine', 'id_competence_humaine', 5);
+                $insererNiveaux($notesBadge, 'evaluation_badge', 'id_badge', 3);
+            }
 
             // ── Construction du détail précis des changements pour le suivi des modifications ──
             $details = '';
@@ -298,8 +368,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     [
                         'nom'           => $nom,
                         'prenom'        => $prenom,
-                        'classe'        => $classe,
-                        'etablissement' => $etablissement,
+                        'classe'        => $nomsClasse[$idClasse] ?? '',
+                        'etablissement' => $nomsEtablissement[$idEtablissement] ?? '',
                         'date_debut'    => $dateDebut !== '' ? $dateDebut : null,
                         'date_fin'      => $dateFin !== '' ? $dateFin : null,
                     ],
@@ -309,92 +379,157 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $note !== '' ? (float) $note : null,
                     $nomsTech,
                     $nomsHumaine,
-                    $nomsBadge
+                    $nomsBadge,
+                    $avant['commentaire'] ?? null,
+                    $commentaire !== '' ? $commentaire : null
                 );
             }
 
+            // Correction 3.5 : la journalisation est effectuée AVANT le commit, dans la
+            // même transaction, afin que la fiche et sa trace d'audit réussissent ou
+            // échouent ensemble.
             logAction(
                 $idEdition ? 'modification' : 'creation',
-                (int) $idStagiaire,
+                (int) $idStage,
                 $nom . ' ' . $prenom,
                 $details
             );
 
-            $succes = $idEdition ? "Stagiaire modifié avec succès." : "Stagiaire enregistré avec succès.";
+            $pdo->commit();
+
+            // Correction 3.19 : on ne continue plus à rendre la réponse du POST
+            // (ce qui exposait à une double soumission au moindre F5, et faisait
+            // dépendre le retour utilisateur d'un setTimeout JavaScript). On stocke
+            // un message flash en session et on redirige immédiatement en GET vers
+            // la même fiche : la page se recharge alors depuis l'état réellement
+            // commité en base, et un rechargement ultérieur ne renvoie plus le formulaire.
+            $_SESSION['flash_succes'] = $idEdition
+                ? "Stagiaire modifié avec succès."
+                : "Stagiaire enregistré avec succès.";
+            // Nouveau : uniquement pour une CRÉATION, on redirige automatiquement vers
+            // l'accueil juste après l'affichage du message, pour éviter à l'utilisateur
+            // de devoir cliquer sur "Retour".
+            $_SESSION['flash_redirection_accueil'] = !$idEdition;
+            header("Location: formulaire_stagiaires.php?id=" . (int) $idStage);
+            exit;
         } catch (Exception $e) {
-            $pdo->rollBack();
-            $erreur = "Erreur lors de l'enregistrement : " . $e->getMessage();
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            // Correction (revue fichier par fichier) : ne jamais renvoyer le message
+            // d'exception brut à l'utilisateur (peut révéler des détails du schéma ou
+            // de la requête). Le détail complet part dans les logs serveur.
+            error_log('formulaire_stagiaires.php : erreur enregistrement stage — ' . $e->getMessage());
+            $erreur = "Une erreur est survenue lors de l'enregistrement. Merci de réessayer.";
         }
     }
 }
 
-// ── Chargement des données existantes si on est en mode édition (affichage du formulaire) ──
-$stagiaireData        = null;
+// ── Message flash après redirection (correction 3.19, POST/Redirect/GET) ──
+$redirectionAccueil = false;
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && !empty($_SESSION['flash_succes'])) {
+    $succes = $_SESSION['flash_succes'];
+    $redirectionAccueil = !empty($_SESSION['flash_redirection_accueil']);
+    unset($_SESSION['flash_succes'], $_SESSION['flash_redirection_accueil']);
+}
+
+// ── Préparation des données à afficher dans le formulaire ──
+// Correction 3.6 : en cas d'erreur de validation après un POST, on réaffiche les
+// valeurs SAISIES par l'utilisateur (jamais des tableaux vides), et on conserve le
+// mode édition. Ce n'est qu'au premier chargement (GET) qu'on va lire la base.
+$stagiaireData          = null;
 $notesTechExistantes    = [];
 $notesHumaineExistantes = [];
 $notesBadgeExistantes   = [];
 $noteExistante          = null;
+$commentaireExistant    = null;
 
-if ($idEdition && $_SERVER['REQUEST_METHOD'] !== 'POST') {
-    $pdoTmp = getDB();
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Réaffichage fidèle de la saisie, qu'elle ait échoué ou réussi.
+    $stagiaireData = [
+        'nom'              => $_POST['nom'] ?? '',
+        'prenom'           => $_POST['prenom'] ?? '',
+        'id_classe'        => filter_input(INPUT_POST, 'classe', FILTER_VALIDATE_INT) ?: null,
+        'id_etablissement' => filter_input(INPUT_POST, 'etablissement', FILTER_VALIDATE_INT) ?: null,
+        'date_debut'       => $_POST['date_debut'] ?? '',
+        'date_fin'         => $_POST['date_fin'] ?? '',
+        'etablissement_raw'      => $_POST['etablissement'] ?? '',
+        'etablissement_nouveau'  => $_POST['etablissement_nouveau'] ?? '',
+    ];
+    foreach (($_POST['tech'] ?? []) as $id => $niveau) {
+        $notesTechExistantes[(int) $id] = (int) $niveau;
+    }
+    foreach (($_POST['humaine'] ?? []) as $id => $niveau) {
+        $notesHumaineExistantes[(int) $id] = (int) $niveau;
+    }
+    foreach (($_POST['badge'] ?? []) as $id => $niveau) {
+        $notesBadgeExistantes[(int) $id] = (int) $niveau;
+    }
+    $noteExistante = $_POST['note'] ?? '';
+    $commentaireExistant = $_POST['commentaire'] ?? '';
 
-    $stmt = $pdoTmp->prepare("SELECT * FROM stagiaire WHERE id_stagiaire = ?");
-    $stmt->execute([$idEdition]);
-    $stagiaireData = $stmt->fetch();
-
-    if (!$stagiaireData) {
+    // Si l'enregistrement a réussi, on repart d'une saisie propre pour la prochaine
+    // évaluation mais on garde les informations générales à l'écran.
+    if ($succes !== '') {
+        $notesTechExistantes = $notesHumaineExistantes = $notesBadgeExistantes = [];
+        $noteExistante = null;
+        $commentaireExistant = null;
+    }
+} elseif ($idEdition) {
+    // Premier chargement du formulaire en mode édition : on lit l'état actuel en base.
+    $etat = chargerEtatStage($pdo, $idEdition, $nomsClasse, $nomsEtablissement);
+    if (!$etat) {
         http_response_code(404);
         exit('Stagiaire introuvable.');
     }
-
-    $stmt = $pdoTmp->prepare("SELECT id_competence_technique, niveau FROM evaluation_competence_technique WHERE id_stagiaire = ?");
-    $stmt->execute([$idEdition]);
-    foreach ($stmt->fetchAll() as $row) {
-        $notesTechExistantes[(int) $row['id_competence_technique']] = (int) $row['niveau'];
-    }
-
-    $stmt = $pdoTmp->prepare("SELECT id_competence_humaine, niveau FROM evaluation_competence_humaine WHERE id_stagiaire = ?");
-    $stmt->execute([$idEdition]);
-    foreach ($stmt->fetchAll() as $row) {
-        $notesHumaineExistantes[(int) $row['id_competence_humaine']] = (int) $row['niveau'];
-    }
-
-    $stmt = $pdoTmp->prepare("SELECT id_badge, niveau FROM evaluation_badge WHERE id_stagiaire = ?");
-    $stmt->execute([$idEdition]);
-    foreach ($stmt->fetchAll() as $row) {
-        $notesBadgeExistantes[(int) $row['id_badge']] = (int) $row['niveau'];
-    }
-
-    // Notation globale (/20), jointure simple sur id_stagiaire
-    $stmt = $pdoTmp->prepare("SELECT note FROM notation WHERE id_stagiaire = ?");
-    $stmt->execute([$idEdition]);
-    $noteRow = $stmt->fetch();
-    $noteExistante = $noteRow ? $noteRow['note'] : null;
+    $stagiaireData = [
+        'nom'              => $etat['general']['nom'],
+        'prenom'           => $etat['general']['prenom'],
+        'id_classe'        => array_search($etat['general']['classe'], $nomsClasse, true) ?: null,
+        'id_etablissement' => array_search($etat['general']['etablissement'], $nomsEtablissement, true) ?: null,
+        'date_debut'       => $etat['general']['date_debut'],
+        'date_fin'         => $etat['general']['date_fin'],
+    ];
+    $notesTechExistantes    = $etat['tech'];
+    $notesHumaineExistantes = $etat['humaine'];
+    $notesBadgeExistantes   = $etat['badge'];
+    $noteExistante          = $etat['note'];
+    $commentaireExistant    = $etat['commentaire'];
 }
 
-// ── Chargement des listes depuis la base (pour générer le formulaire) ──
-$pdo = getDB();
-$competencesTechniques = $pdo->query("SELECT id_competence_technique, nom FROM competence_technique ORDER BY nom")->fetchAll();
-$competencesHumaines   = $pdo->query("SELECT id_competence_humaine, nom FROM competence_humaine ORDER BY nom")->fetchAll();
-$badges                = $pdo->query("SELECT id_badge, nom FROM badge ORDER BY nom")->fetchAll();
+// ── Historique des évaluations (correction : graphique d'évolution) ──
+// Uniquement en mode édition : on récupère toutes les séances d'évaluation
+// passées de ce stage (note globale) pour tracer une courbe de progression.
+$historiqueEvaluations = [];
+if ($idEdition) {
+    $stmt = $pdo->prepare(
+        "SELECT date_evaluation, note FROM evaluation WHERE id_stage = ? ORDER BY date_evaluation ASC, id_evaluation ASC"
+    );
+    $stmt->execute([$idEdition]);
+    $historiqueEvaluations = $stmt->fetchAll();
+}
 
 /**
- * Génère un groupe d'étoiles SVG interactives (même visuel que la fiche stagiaire comp.php),
- * accompagné de son input caché qui sera envoyé avec le formulaire.
+ * Génère un groupe d'étoiles SVG interactives, accompagné d'un bouton "Non évalué"
+ * permettant de revenir à zéro (correction 3.7 : il était auparavant impossible de
+ * retirer une étoile depuis l'interface), et de son input caché envoyé avec le formulaire.
  */
 function renderStarInput(string $name, int $max, int $value): string
 {
     $value = max(0, min($max, $value));
-    $html = '<div class="stars-input" data-max="' . $max . '">';
+    $html = '<div class="stars-input-wrap" data-max="' . $max . '">';
+    $html .= '<div class="stars-input">';
     for ($i = 1; $i <= $max; $i++) {
         $filled  = $i <= $value;
         $couleur = $filled ? '#f0a500' : '#e2e2e2';
-        $html .= '<svg class="star" data-value="' . $i . '" width="20" height="20" viewBox="0 0 24 24" style="fill:' . $couleur . ';">'
+        $html .= '<svg class="star" data-value="' . $i . '" width="20" height="20" viewBox="0 0 24 24" tabindex="0" role="button" aria-pressed="' . ($filled ? 'true' : 'false') . '" aria-label="Note ' . $i . ' sur ' . $max . '" style="fill:' . $couleur . ';">'
                . '<polygon points="12,2 15,9 22,9 16.5,13.5 18.5,21 12,17 5.5,21 7.5,13.5 2,9 9,9"></polygon>'
                . '</svg>';
     }
     $html .= '</div>';
+    $html .= '<button type="button" class="stars-clear">Non évalué</button>';
     $html .= '<input type="hidden" class="rating-input" name="' . htmlspecialchars($name) . '" value="' . $value . '">';
+    $html .= '</div>';
     return $html;
 }
 ?>
@@ -403,29 +538,49 @@ function renderStarInput(string $name, int $max, int $value): string
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title><?= $stagiaireData ? 'Modifier le stagiaire' : 'Nouveau stagiaire' ?></title>
+  <title><?= $idEdition ? 'Modifier le stagiaire' : 'Nouveau stagiaire' ?></title>
   <link rel="stylesheet" href="style.css">
+  <?php if ($idEdition && count($historiqueEvaluations) > 0): ?>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+  <?php endif; ?>
 </head>
 <body class="<?= bodyClass() ?>">
   <div id="toast" class="toast"></div>
 
   <header class="header">
     <a href="index.php" class="back-btn">&larr; Retour</a>
-    <h1><?= $stagiaireData ? 'Modifier le stagiaire' : 'Nouveau stagiaire' ?></h1>
+    <h1><?= $idEdition ? 'Modifier le stagiaire' : 'Nouveau stagiaire' ?></h1>
+    <button type="submit" form="ficheForm" class="back-btn header-submit-btn">
+      <?= $idEdition ? 'Enregistrer les modifications' : 'Enregistrer le stagiaire' ?>
+    </button>
   </header>
 
   <main class="content">
     <?php if ($erreur !== ''): ?>
       <div class="alert-error"><?= htmlspecialchars($erreur) ?></div>
     <?php endif; ?>
+    <?php if ($succes !== ''): ?>
+      <div class="alert-succes"><?= htmlspecialchars($succes) ?></div>
+    <?php endif; ?>
 
-    <form method="POST" action="formulaire_stagiaires.php<?= $idEdition ? '?id=' . (int) $idEdition : '' ?>">
+    <form id="ficheForm" method="POST" action="formulaire_stagiaires.php<?= $idEdition ? '?id=' . (int) $idEdition : '' ?>">
       <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
       <?php if ($idEdition): ?>
-        <input type="hidden" name="id_stagiaire" value="<?= (int) $idEdition ?>">
+        <input type="hidden" name="id_stage" value="<?= (int) $idEdition ?>">
       <?php endif; ?>
 
       <div class="form-grid">
+
+        <?php if ($idEdition && count($historiqueEvaluations) > 0): ?>
+        <!-- Graphique d'évolution : note globale au fil des séances d'évaluation -->
+        <section class="form-col evolution-col">
+          <h3>Évolution de la notation</h3>
+          <?php if (count($historiqueEvaluations) === 1): ?>
+            <p class="fiche-empty" style="margin-bottom:10px;">Une seule séance d'évaluation enregistrée pour l'instant : la courbe se complétera au fil des prochaines modifications.</p>
+          <?php endif; ?>
+          <canvas id="evolutionChart" height="70"></canvas>
+        </section>
+        <?php endif; ?>
 
         <!-- Colonne 1 : Informations générales -->
         <section class="form-col">
@@ -442,20 +597,25 @@ function renderStarInput(string $name, int $max, int $value): string
           <div class="field">
             <label for="classe">Classe</label>
             <select id="classe" name="classe" required>
-              <option value="" disabled <?= empty($stagiaireData) ? 'selected' : '' ?>>Sélectionner...</option>
-              <?php foreach (['Seconde', 'Première', 'Terminale', 'Post-bac', 'Licence 1', 'Licence 2', 'Licence 3'] as $optClasse): ?>
-                <option value="<?= $optClasse ?>" <?= (($stagiaireData['classe'] ?? '') === $optClasse) ? 'selected' : '' ?>><?= $optClasse ?></option>
+              <option value="" disabled <?= empty($stagiaireData['id_classe']) ? 'selected' : '' ?>>Sélectionner...</option>
+              <?php foreach ($classesRef as $optClasse): ?>
+                <option value="<?= (int) $optClasse['id_classe'] ?>" <?= ((int) ($stagiaireData['id_classe'] ?? 0) === (int) $optClasse['id_classe']) ? 'selected' : '' ?>><?= htmlspecialchars($optClasse['nom']) ?></option>
               <?php endforeach; ?>
             </select>
           </div>
           <div class="field">
             <label for="etablissement">Établissement</label>
             <select id="etablissement" name="etablissement" required>
-              <option value="" disabled <?= empty($stagiaireData) ? 'selected' : '' ?>>Sélectionner...</option>
-              <?php foreach (['Lycée Dick Ukeiwé', 'Lycée polyvalent du Mont-Dore', 'Université de la Nouvelle-Calédonie (UNC)'] as $optEtab): ?>
-                <option value="<?= $optEtab ?>" <?= (($stagiaireData['etablissement'] ?? '') === $optEtab) ? 'selected' : '' ?>><?= $optEtab ?></option>
+              <option value="" disabled <?= (empty($stagiaireData['id_etablissement']) && ($stagiaireData['etablissement_raw'] ?? '') !== '__autre__') ? 'selected' : '' ?>>Sélectionner...</option>
+              <?php foreach ($etablissementsRef as $optEtab): ?>
+                <option value="<?= (int) $optEtab['id_etablissement'] ?>" <?= ((int) ($stagiaireData['id_etablissement'] ?? 0) === (int) $optEtab['id_etablissement']) ? 'selected' : '' ?>><?= htmlspecialchars($optEtab['nom']) ?></option>
               <?php endforeach; ?>
+              <option value="__autre__" <?= (($stagiaireData['etablissement_raw'] ?? '') === '__autre__') ? 'selected' : '' ?>>+ Ajouter un nouvel établissement…</option>
             </select>
+            <input type="text" id="etablissementNouveau" name="etablissement_nouveau"
+                   placeholder="Nom du nouvel établissement"
+                   value="<?= htmlspecialchars($stagiaireData['etablissement_nouveau'] ?? '') ?>"
+                   style="margin-top:8px;display:none;">
           </div>
           <div class="field">
             <label>Période</label>
@@ -470,6 +630,7 @@ function renderStarInput(string $name, int $max, int $value): string
         <!-- Colonne 2 : Compétences techniques -->
         <section class="form-col">
           <h3>Compétences techniques</h3>
+          <p class="fiche-empty" style="margin-bottom:10px;">Cette saisie crée une nouvelle séance d'évaluation datée : l'historique des séances précédentes est conservé.</p>
           <div class="skill-list">
             <?php foreach ($competencesTechniques as $comp):
               $val = $notesTechExistantes[(int) $comp['id_competence_technique']] ?? 0;
@@ -507,12 +668,12 @@ function renderStarInput(string $name, int $max, int $value): string
         <section class="form-col">
           <h3>Badges</h3>
           <div class="skill-list">
-            <?php foreach ($badges as $badge):
-              $val = $notesBadgeExistantes[(int) $badge['id_badge']] ?? 0;
+            <?php foreach ($badges as $badgeItem):
+              $val = $notesBadgeExistantes[(int) $badgeItem['id_badge']] ?? 0;
             ?>
               <div class="skill-item">
-                <span class="skill-name"><?= htmlspecialchars($badge['nom']) ?></span>
-                <?= renderStarInput('badge[' . (int) $badge['id_badge'] . ']', 3, $val) ?>
+                <span class="skill-name"><?= htmlspecialchars($badgeItem['nom']) ?></span>
+                <?= renderStarInput('badge[' . (int) $badgeItem['id_badge'] . ']', 3, $val) ?>
               </div>
             <?php endforeach; ?>
             <?php if (empty($badges)): ?>
@@ -520,32 +681,55 @@ function renderStarInput(string $name, int $max, int $value): string
             <?php endif; ?>
           </div>
 
-          <?php
-            // En cas de ré-affichage après erreur, on garde la valeur tapée par l'utilisateur ;
-            // sinon (chargement initial en édition), on reprend la note déjà enregistrée.
-            $valeurNoteAffichee = ($_SERVER['REQUEST_METHOD'] === 'POST')
-                ? ($note ?? '')
-                : ($noteExistante !== null ? (string) $noteExistante : '');
-          ?>
           <div class="field" style="margin-top:20px;padding-top:16px;border-top:1px solid #e0d9e3;">
             <label for="note">Notation globale (/20)</label>
             <input type="number" id="note" name="note" min="0" max="20" step="0.5"
                    placeholder="Ex : 15.5"
-                   value="<?= htmlspecialchars($valeurNoteAffichee) ?>">
+                   value="<?= htmlspecialchars($noteExistante !== null ? (string) $noteExistante : '') ?>">
+          </div>
+
+          <!-- Correction 3.15 : ce champ existait déjà en base (evaluation.commentaire)
+               mais n'était affiché nulle part. Il permet de justifier une note ou de noter
+               une observation qualitative pour la séance d'évaluation en cours. -->
+          <div class="field" style="margin-top:16px;">
+            <label for="commentaire">Commentaire de l'évaluateur (facultatif)</label>
+            <textarea id="commentaire" name="commentaire" rows="3"
+                      placeholder="Observations sur cette séance d'évaluation…"
+                      style="width:100%;resize:vertical;font:inherit;padding:8px;box-sizing:border-box;"
+            ><?= htmlspecialchars($commentaireExistant ?? '') ?></textarea>
           </div>
         </section>
 
       </div>
-
-      <button type="submit" class="submit-btn"><?= $idEdition ? 'Enregistrer les modifications' : 'Enregistrer le stagiaire' ?></button>
     </form>
   </main>
 
   <script>
-    // Étoiles interactives (SVG) — clic pour fixer la note, survol pour prévisualiser
-    document.querySelectorAll('.stars-input').forEach(container => {
+    // Affiche le champ de saisie libre quand "+ Ajouter un nouvel établissement…"
+    // est sélectionné, et le rend obligatoire dans ce cas uniquement.
+    (function() {
+      const etabSelect = document.getElementById('etablissement');
+      const etabNouveau = document.getElementById('etablissementNouveau');
+      if (!etabSelect || !etabNouveau) return;
+
+      function syncEtabNouveau() {
+        const estNouveau = etabSelect.value === '__autre__';
+        etabNouveau.style.display = estNouveau ? 'block' : 'none';
+        etabNouveau.required = estNouveau;
+        if (!estNouveau) etabNouveau.value = '';
+      }
+
+      etabSelect.addEventListener('change', syncEtabNouveau);
+      syncEtabNouveau();
+    })();
+
+    // Étoiles interactives (SVG) — clic pour fixer la note, second clic sur la même
+    // étoile ou bouton "Non évalué" pour l'effacer (correction 3.7), survol pour prévisualiser.
+    document.querySelectorAll('.stars-input-wrap').forEach(wrap => {
+      const container = wrap.querySelector('.stars-input');
       const stars = Array.from(container.querySelectorAll('.star'));
-      const hiddenInput = container.nextElementSibling; // input.rating-input juste après
+      const hiddenInput = wrap.querySelector('.rating-input');
+      const clearBtn = wrap.querySelector('.stars-clear');
       let currentRating = hiddenInput ? (parseInt(hiddenInput.value, 10) || 0) : 0;
 
       function paint(n) {
@@ -554,30 +738,115 @@ function renderStarInput(string $name, int $max, int $value): string
         });
       }
 
+      // Correction 3.20 : aria-pressed ne doit refléter que la note VALIDÉE,
+      // pas la prévisualisation au survol (sinon un lecteur d'écran annoncerait
+      // un état qui n'a pas réellement été choisi).
+      function syncAria(n) {
+        stars.forEach((s, i) => {
+          s.setAttribute('aria-pressed', i < n ? 'true' : 'false');
+        });
+      }
+
+      function setRating(n) {
+        currentRating = n;
+        if (hiddenInput) hiddenInput.value = currentRating;
+        paint(currentRating);
+        syncAria(currentRating);
+      }
+
       stars.forEach((star, index) => {
         star.addEventListener('mouseenter', () => paint(index + 1));
 
         star.addEventListener('click', () => {
-          currentRating = index + 1;
-          if (hiddenInput) hiddenInput.value = currentRating;
-          paint(currentRating);
+          setRating(currentRating === index + 1 ? 0 : index + 1);
+        });
+
+        star.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setRating(currentRating === index + 1 ? 0 : index + 1);
+          }
         });
       });
+
+      if (clearBtn) {
+        clearBtn.addEventListener('click', () => setRating(0));
+      }
 
       container.addEventListener('mouseleave', () => paint(currentRating));
 
       paint(currentRating);
     });
 
+    <?php if ($idEdition && count($historiqueEvaluations) > 0): ?>
+    // Courbe d'évolution de la note globale au fil des séances d'évaluation
+    (function() {
+      const ctx = document.getElementById('evolutionChart');
+      if (!ctx || typeof Chart === 'undefined') return;
+
+      const labels = <?= json_encode(array_map(function ($e) {
+          return $e['date_evaluation'] ? date('d/m/Y', strtotime($e['date_evaluation'])) : '—';
+      }, $historiqueEvaluations)) ?>;
+      const notes = <?= json_encode(array_map(function ($e) {
+          return $e['note'] !== null ? (float) $e['note'] : null;
+      }, $historiqueEvaluations)) ?>;
+
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Note globale (/20)',
+            data: notes,
+            borderColor: '#b8862e',
+            backgroundColor: 'rgba(184, 134, 46, 0.15)',
+            spanGaps: true,
+            tension: 0.3,
+            fill: true,
+            pointBackgroundColor: '#3d1550',
+            pointBorderColor: '#3d1550',
+            pointRadius: 4,
+            pointHoverRadius: 6,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: { min: 0, max: 20, ticks: { stepSize: 5 } }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(item) {
+                  return item.parsed.y === null ? 'Non notée' : ('Note : ' + item.parsed.y + '/20');
+                }
+              }
+            }
+          }
+        }
+      });
+    })();
+    <?php endif; ?>
+
     <?php if ($succes !== ''): ?>
-    // Affiche un petit popup de confirmation puis redirige vers l'index
+    // Affiche un petit popup de confirmation
     (function() {
       const toast = document.getElementById('toast');
       toast.textContent = <?= json_encode($succes) ?>;
       toast.classList.add('show');
+      <?php if ($redirectionAccueil): ?>
+      // Création réussie : on laisse le temps de lire le message, puis on
+      // repart directement sur l'accueil (pas besoin de cliquer sur "Retour").
       setTimeout(function() {
         window.location.href = 'index.php';
-      }, 1500);
+      }, 1400);
+      <?php else: ?>
+      setTimeout(function() {
+        toast.classList.remove('show');
+      }, 2500);
+      <?php endif; ?>
     })();
     <?php endif; ?>
   </script>

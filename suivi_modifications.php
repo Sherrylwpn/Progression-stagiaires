@@ -1,6 +1,6 @@
 <?php
 require_once 'config.php';
-requireAuth(); // Réservé aux 2 utilisateurs connectés
+requireAuth(); // Réservé aux utilisateurs connectés
 
 $pdo = getDB();
 
@@ -48,7 +48,7 @@ function afficherTableauSuivi(array $entrees, string $colonneMasquee, array $lib
         if ($colonneMasquee !== 'stagiaire') {
             echo '<td>';
             echo htmlspecialchars($e['nom_stagiaire']);
-            if (!$e['id_stagiaire']) {
+            if (!$e['id_stage']) {
                 echo ' <span class="non-evalue">(supprimé)</span>';
             }
             echo '</td>';

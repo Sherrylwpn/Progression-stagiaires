@@ -94,6 +94,20 @@ body {
   box-shadow: var(--shadow-sm);
 }
 
+/* ── Bouton "Enregistrer" du header (formulaire_stagiaires.php) ── */
+/* Même style que .back-btn ; seule différence : poussé à droite et sans bordure de <button>. */
+.header-submit-btn {
+  margin-left: auto;
+  border: none;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .header-submit-btn {
+    margin-left: 0;
+  }
+}
+
 /* ── Contenu ── */
 .content {
   padding: 28px 32px 48px;
@@ -219,6 +233,15 @@ body {
 .fiche-empty {
   font-size: 13px;
   color: var(--color-text-muted);
+}
+
+/* ── Graphique d'évolution (formulaire_stagiaires.php, mode édition) ── */
+.evolution-col {
+  grid-column: 1 / -1;
+}
+
+.evolution-col canvas {
+  width: 100%;
 }
 
 /* ── Étoiles interactives (SVG) ── */

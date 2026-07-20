@@ -1,0 +1,578 @@
+PROMPT
+
+Tu es un architecte logiciel senior et un développeur Full Stack expérimenté.
+
+Tu dois concevoir et développer une application professionnelle complète de déclaration de dégradations pour une salle informatique sous Windows 10.
+
+Tu dois produire un projet réel, structuré, maintenable, sécurisé et évolutif.
+
+Ne simplifie aucune partie.
+
+Lorsque plusieurs solutions sont possibles, choisis la plus professionnelle.
+
+Le projet doit être entièrement fonctionnel.
+
+Objectif
+
+Chaque utilisateur qui ouvre une session Windows doit obligatoirement remplir un formulaire de déclaration concernant l'état du matériel de son poste informatique.
+
+Le formulaire doit être affiché automatiquement immédiatement après l'ouverture de session Windows.
+
+Tant que le formulaire n'est pas validé, l'utilisateur ne doit pas pouvoir utiliser normalement son poste.
+
+Le logiciel doit limiter autant que possible les possibilités de contournement pour un utilisateur standard.
+
+Une fois la déclaration validée, le formulaire se ferme automatiquement et l'utilisateur peut utiliser Windows normalement.
+
+Chaque déclaration est définitive.
+
+Elle ne pourra jamais être modifiée.
+
+Aucune donnée ne doit être perdue.
+
+Architecture souhaitée
+
+Le projet est composé de deux parties :
+
+1. Serveur central
+
+Le serveur héberge :
+
+Apache
+PHP 8+
+MySQL ou MariaDB
+API REST sécurisée
+Interface d'administration
+
+Aucun serveur Web ne doit être installé sur les postes clients.
+
+Tous les postes communiquent uniquement avec le serveur via HTTPS.
+
+Toutes les communications utilisent JSON.
+
+2. Application Windows
+
+Une application Windows est installée sur chaque ordinateur.
+
+Technologie souhaitée :
+
+C# (.NET 8 ou version LTS la plus récente compatible avec Windows 10).
+
+Cette application est responsable de :
+
+démarrer automatiquement après la connexion Windows ;
+récupérer les informations du poste ;
+afficher le formulaire ;
+empêcher autant que possible sa fermeture ;
+gérer le fonctionnement hors connexion ;
+synchroniser automatiquement les déclarations avec le serveur.
+Fonctionnement général
+
+Lorsqu'un utilisateur ouvre sa session Windows :
+
+Windows démarre normalement.
+L'application cliente démarre automatiquement.
+Le formulaire s'affiche immédiatement en plein écran.
+Le formulaire reste au premier plan.
+Tant que le formulaire n'est pas validé, il ne peut pas être fermé par un utilisateur standard.
+Après validation, le formulaire se ferme automatiquement.
+L'utilisateur accède alors normalement à son bureau.
+Informations récupérées automatiquement
+
+Le logiciel récupère automatiquement :
+
+Nom d'utilisateur Windows
+Nom complet du PC
+Adresse IP
+Adresse MAC
+Domaine Windows (si présent)
+Date
+Heure
+Numéro du poste
+
+L'utilisateur ne saisit aucune de ces informations.
+
+Le numéro du poste est configurable par l'administrateur.
+
+Matériels
+
+La liste des matériels ne doit jamais être codée dans le programme.
+
+Elle est stockée dans la base de données.
+
+Chaque matériel possède :
+
+un identifiant ;
+un nom ;
+un ordre d'affichage ;
+un statut Actif/Inactif.
+
+Le formulaire récupère automatiquement cette liste depuis le serveur.
+
+Si un administrateur ajoute un nouveau matériel, celui-ci apparaît automatiquement sur tous les postes sans réinstallation.
+
+Dégradations
+
+Chaque matériel possède plusieurs états possibles.
+
+Les états sont stockés dans une table de la base de données.
+
+Par défaut :
+
+Aucun dégât
+Tags
+Abîmé
+Cassé
+
+Le système doit permettre d'ajouter facilement d'autres états ultérieurement.
+
+Plusieurs états peuvent être sélectionnés simultanément.
+
+Cependant :
+
+"Aucun dégât" est exclusif.
+
+Si "Aucun dégât" est sélectionné :
+
+toutes les autres cases sont automatiquement décochées.
+
+Si une autre case est cochée :
+
+"Aucun dégât" est automatiquement décoché.
+Validation
+
+Le formulaire ne peut être validé que lorsque :
+
+chaque matériel possède au moins une réponse.
+
+Les validations doivent être réalisées :
+
+côté JavaScript ;
+côté serveur.
+
+Après validation :
+
+les données deviennent définitives ;
+elles ne peuvent plus être modifiées.
+Commentaire
+
+Un champ commentaire est disponible.
+
+Il est facultatif.
+
+Longueur maximale :
+
+1000 caractères.
+
+Fonctionnement hors connexion
+
+Si le serveur est inaccessible :
+
+la déclaration est enregistrée localement.
+
+Le stockage local utilise SQLite.
+
+Aucune donnée ne doit être perdue.
+
+L'application tente automatiquement une synchronisation :
+
+au démarrage ;
+toutes les cinq minutes ;
+lors du retour de la connexion réseau.
+
+Une fois synchronisée :
+
+la déclaration locale est marquée comme synchronisée.
+
+Base de données
+
+Utiliser MySQL ou MariaDB.
+
+Créer une base normalisée.
+
+Utiliser des clés étrangères.
+
+Éviter toute redondance.
+
+Créer notamment les tables suivantes :
+
+users
+computers
+materials
+damage_types
+declarations
+declaration_materials
+administrators
+logs
+
+Toutes les clés doivent être correctement indexées.
+
+API
+
+Créer une API REST complète.
+
+Toutes les réponses sont en JSON.
+
+Utiliser les méthodes HTTP appropriées :
+
+GET
+
+POST
+
+PUT
+
+DELETE lorsque nécessaire.
+
+Valider toutes les données côté serveur.
+
+Retourner des codes HTTP appropriés.
+
+Sécurité
+
+Utiliser :
+
+HTTPS.
+
+PDO avec requêtes préparées.
+
+Protection contre l'injection SQL.
+
+Protection XSS.
+
+Protection CSRF.
+
+Validation côté client.
+
+Validation côté serveur.
+
+Gestion des erreurs.
+
+Journalisation.
+
+Les mots de passe des administrateurs doivent être hachés avec Argon2id.
+
+Créer un système de rôles.
+
+Interface d'administration
+
+Créer une interface moderne.
+
+Authentification obligatoire.
+
+Deux comptes administrateurs au minimum.
+
+# Accès aux données
+
+L'accès direct à la base de données MySQL/MariaDB ne doit jamais être nécessaire pour les administrateurs du service informatique.
+
+Toutes les opérations de consultation et de gestion doivent être réalisées exclusivement depuis une interface d'administration web sécurisée.
+
+L'accès direct à la base de données est réservé uniquement à la maintenance, aux sauvegardes et aux opérations d'administration du serveur.
+
+## Tableau de bord
+
+Après authentification, les administrateurs doivent accéder à un tableau de bord présentant notamment :
+
+* le nombre de déclarations du jour ;
+* le nombre total de déclarations ;
+* les déclarations en attente de synchronisation ;
+* les dernières déclarations enregistrées ;
+* les matériels les plus fréquemment signalés comme dégradés ;
+* des statistiques et graphiques d'évolution.
+
+## Consultation des déclarations
+
+Les administrateurs doivent pouvoir consulter chaque déclaration dans son intégralité.
+
+Chaque fiche doit afficher au minimum :
+
+* l'identifiant de la déclaration ;
+* le nom d'utilisateur Windows ;
+* le nom du poste informatique ;
+* le numéro du poste ;
+* le nom du PC ;
+* l'adresse IP ;
+* l'adresse MAC ;
+* la date et l'heure de la déclaration ;
+* tous les matériels inspectés ;
+* toutes les dégradations sélectionnées pour chaque matériel ;
+* le commentaire éventuel.
+
+Les déclarations doivent être consultables sans accès direct à la base de données.
+
+## Recherche et filtres
+
+L'interface doit permettre des recherches multicritères :
+
+* par utilisateur ;
+* par nom du PC ;
+* par numéro de poste ;
+* par matériel ;
+* par type de dégradation ;
+* par date ;
+* par période.
+
+Les filtres doivent pouvoir être combinés.
+
+## Historique des postes
+
+Chaque poste informatique doit disposer d'une fiche dédiée affichant :
+
+* les informations du poste ;
+* l'historique complet des déclarations ;
+* la dernière synchronisation ;
+* les dégradations signalées au fil du temps ;
+* des statistiques propres à ce poste.
+
+## Gestion des matériels
+
+Les administrateurs doivent pouvoir :
+
+* ajouter un matériel ;
+* modifier son nom ;
+* modifier son ordre d'affichage ;
+* activer ou désactiver un matériel ;
+* gérer les types de dégradations disponibles.
+
+Aucune modification du code ne doit être nécessaire pour ajouter un nouveau matériel ou un nouveau type de dégradation.
+
+## Export
+
+Les administrateurs doivent pouvoir exporter les résultats de leurs recherches au format :
+
+* Excel (.xlsx) ;
+* CSV ;
+* PDF.
+
+Ils doivent également pouvoir imprimer les rapports directement depuis l'interface.
+
+## Journalisation
+
+Toutes les actions d'administration doivent être enregistrées dans un journal d'audit.
+
+Le journal doit notamment conserver :
+
+* les connexions et déconnexions ;
+* les échecs d'authentification ;
+* les ajouts, modifications et suppressions logiques de matériels ;
+* les modifications de configuration ;
+* les erreurs applicatives ;
+* les synchronisations.
+
+## Gestion des administrateurs
+
+L'interface doit permettre la gestion des comptes administrateurs.
+
+Chaque administrateur possède :
+
+* un identifiant unique ;
+* un mot de passe haché avec Argon2id ;
+* un rôle ;
+* une date de dernière connexion.
+
+L'application doit être conçue pour permettre facilement l'ajout de nouveaux rôles et de nouvelles autorisations à l'avenir.
+
+
+Fonctionnalités :
+
+Tableau de bord.
+
+Consultation des déclarations.
+
+Recherche par :
+
+utilisateur
+ordinateur
+poste
+matériel
+
+Filtres :
+
+date
+période
+utilisateur
+ordinateur
+
+Gestion des matériels :
+
+ajout
+modification
+activation
+désactivation
+
+Gestion des postes.
+
+Gestion des administrateurs.
+
+Historique complet.
+
+Export :
+
+Excel
+
+CSV
+
+PDF
+
+Impression.
+
+Statistiques :
+
+nombre de déclarations ;
+
+matériel le plus souvent dégradé ;
+
+évolution mensuelle ;
+
+graphiques.
+
+Journalisation
+
+Créer un système de logs.
+
+Journaliser notamment :
+
+connexion administrateur ;
+
+erreurs ;
+
+échecs d'authentification ;
+
+synchronisations ;
+
+ajout/modification des matériels ;
+
+erreurs API.
+
+Interface utilisateur
+
+Le formulaire doit être :
+
+clair ;
+
+moderne ;
+
+responsive ;
+
+accessible ;
+
+rapide.
+
+Utiliser :
+
+HTML5
+
+CSS3
+
+JavaScript moderne
+
+Bootstrap 5 si nécessaire.
+
+Structure du projet
+
+Utiliser une architecture propre.
+
+Séparer :
+
+API
+
+Controllers
+
+Models
+
+Views
+
+Services
+
+Repositories
+
+Configuration
+
+Logs
+
+Storage
+
+Assets
+
+Utiliser le modèle MVC côté serveur.
+
+Le code doit respecter les principes SOLID lorsque cela est pertinent.
+
+Performances
+
+Optimiser :
+
+les requêtes SQL ;
+
+les index ;
+
+les temps de chargement ;
+
+la synchronisation.
+
+Prévoir plusieurs centaines de milliers de déclarations sans dégradation importante des performances.
+
+Maintenance
+
+Le code doit être :
+
+commenté ;
+
+lisible ;
+
+modulaire ;
+
+facilement maintenable.
+
+Chaque classe doit avoir une responsabilité unique.
+
+Éviter les duplications.
+
+Déploiement
+
+Expliquer :
+
+l'installation du serveur ;
+
+l'installation du client Windows ;
+
+la configuration ;
+
+la création de la base de données ;
+
+la configuration HTTPS ;
+
+la configuration du démarrage automatique ;
+
+les sauvegardes.
+
+Documentation
+
+Pour chaque partie du projet :
+
+expliquer les choix techniques ;
+
+comment fonctionne le code ;
+
+comment modifier le projet ultérieurement ;
+
+comment ajouter un nouveau matériel ;
+
+comment ajouter un nouveau type de dégradation.
+
+Ce que tu dois produire
+
+Je ne veux pas un simple exemple de code.
+
+Je veux un projet complet, professionnel et directement exploitable.
+
+Avant de générer du code, commence impérativement par :
+
+proposer l'architecture complète du projet ;
+proposer l'arborescence des dossiers ;
+concevoir le schéma de la base de données ;
+présenter le diagramme des relations entre les tables ;
+expliquer les choix techniques ;
+attendre ma validation.
+
+Une fois validé, développe le projet étape par étape, en fournissant un code complet, testé, commenté et cohérent entre toutes les parties. Ne génère jamais de code qui dépend d'éléments non encore définis et conserve une cohérence stricte entre chaque étape du développement.

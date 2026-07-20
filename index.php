@@ -1,17 +1,45 @@
 <?php
 require_once 'config.php';
+requireAuth(); // Correction 3.3 : la liste des stagiaires ne doit pas être consultable sans connexion
+
 $pdo = getDB();
 
-// ── Liste des stagiaires + nombre d'évaluations déjà saisies ──
+// ── Liste des stages (chaque carte = un stage, cf. correction 3.4) avec la dernière
+//    évaluation connue (note globale + nombre de critères déjà notés lors de cette séance) ──
 $stagiaires = $pdo->query("
   SELECT
-    s.id_stagiaire, s.nom, s.prenom, s.classe, s.etablissement, s.date_debut, s.date_fin,
-    (SELECT COUNT(*) FROM evaluation_competence_technique et WHERE et.id_stagiaire = s.id_stagiaire) AS nb_tech,
-    (SELECT COUNT(*) FROM evaluation_competence_humaine  eh WHERE eh.id_stagiaire = s.id_stagiaire) AS nb_hum,
-    (SELECT COUNT(*) FROM evaluation_badge               eb WHERE eb.id_stagiaire = s.id_stagiaire) AS nb_badge,
-    n.note AS note
-  FROM stagiaire s
-  LEFT JOIN notation n ON n.id_stagiaire = s.id_stagiaire
+    st.id_stage, s.nom, s.prenom, c.nom AS classe, e.nom AS etablissement,
+    st.date_debut, st.date_fin,
+    dern.note AS note,
+    COALESCE(cnt.nb_notes, 0) AS nb_notes
+  FROM stage st
+  JOIN stagiaire s ON s.id_stagiaire = st.id_stagiaire
+  JOIN classe_ref c ON c.id_classe = st.id_classe
+  JOIN etablissement_ref e ON e.id_etablissement = st.id_etablissement
+  LEFT JOIN (
+    SELECT ev1.id_stage, ev1.note
+    FROM evaluation ev1
+    WHERE ev1.id_evaluation = (
+      SELECT ev2.id_evaluation FROM evaluation ev2
+      WHERE ev2.id_stage = ev1.id_stage
+      ORDER BY ev2.date_evaluation DESC, ev2.id_evaluation DESC LIMIT 1
+    )
+  ) dern ON dern.id_stage = st.id_stage
+  LEFT JOIN (
+    SELECT ev.id_stage,
+           SUM(
+             (SELECT COUNT(*) FROM evaluation_competence_technique WHERE id_evaluation = ev.id_evaluation) +
+             (SELECT COUNT(*) FROM evaluation_competence_humaine   WHERE id_evaluation = ev.id_evaluation) +
+             (SELECT COUNT(*) FROM evaluation_badge                WHERE id_evaluation = ev.id_evaluation)
+           ) AS nb_notes
+    FROM evaluation ev
+    WHERE ev.id_evaluation = (
+      SELECT ev2.id_evaluation FROM evaluation ev2
+      WHERE ev2.id_stage = ev.id_stage
+      ORDER BY ev2.date_evaluation DESC, ev2.id_evaluation DESC LIMIT 1
+    )
+    GROUP BY ev.id_stage
+  ) cnt ON cnt.id_stage = st.id_stage
   ORDER BY s.nom, s.prenom
 ")->fetchAll();
 
@@ -36,6 +64,16 @@ foreach ($stagiaires as $s) {
 }
 $annees = array_values(array_unique($annees));
 rsort($annees); // les plus récentes en premier
+
+// ── Autres comptes admin (pour le popup "Sécurité du compte") ──
+// Uniquement chargé si l'utilisateur courant est lui-même admin : sert à
+// proposer la réinitialisation du mot de passe d'un autre admin en cas d'oubli.
+$autresAdmins = [];
+if (($_SESSION['role'] ?? '') === 'admin') {
+    $stmt = $pdo->prepare("SELECT id, nom FROM users WHERE role = 'admin' AND id != :id ORDER BY nom");
+    $stmt->execute([':id' => $_SESSION['user_id']]);
+    $autresAdmins = $stmt->fetchAll();
+}
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -43,6 +81,24 @@ rsort($annees); // les plus récentes en premier
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Suivi stagiaire</title>
+  <style>
+    /* Correction 3.14 : le bouton de déconnexion (désormais un <button> dans un
+       <form>, plus un <a>) doit garder exactement le rendu de .menu-popup-item.
+       On ne réinitialise ici QUE le look natif du navigateur sur <button>
+       (fond, bordure, police) ; placé avant index.css, ces règles cèdent la
+       main aux classes .menu-popup-item / .menu-popup-item-danger pour tout
+       le reste (couleur, espacement...) à spécificité égale. */
+    .menu-popup-item-form { margin: 0; padding: 0; }
+    .menu-popup-item-btn {
+      background: none;
+      border: none;
+      font: inherit;
+      text-align: left;
+      width: 100%;
+      box-sizing: border-box;
+      cursor: pointer;
+    }
+  </style>
   <link rel="stylesheet" href="index.css">
   <link rel="stylesheet" href="parametres.css">
 </head>
@@ -52,26 +108,21 @@ rsort($annees); // les plus récentes en premier
   <header class="header">
     <h1>Suivi stagiaire</h1>
     <nav class="header-auth">
-      <?php if (!empty($_SESSION['user_id'])): ?>
-        <span class="header-user"><?= htmlspecialchars($_SESSION['user_nom']) ?></span>
-        <button type="button" class="hamburger-btn" id="menuBtn" aria-expanded="false" aria-controls="menuPopup" aria-label="Ouvrir le menu">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <line x1="3" y1="6" x2="21" y2="6"></line>
-            <line x1="3" y1="12" x2="21" y2="12"></line>
-            <line x1="3" y1="18" x2="21" y2="18"></line>
-          </svg>
-        </button>
-      <?php else: ?>
-        <button type="button" class="auth-btn" id="loginBtn" aria-expanded="false" aria-controls="loginPopup">Connexion</button>
-      <?php endif; ?>
+      <span class="header-user"><?= htmlspecialchars($_SESSION['user_nom']) ?></span>
+      <button type="button" class="hamburger-btn" id="menuBtn" aria-expanded="false" aria-controls="menuPopup" aria-label="Ouvrir le menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
     </nav>
   </header>
 
-  <?php if (!empty($_SESSION['user_id'])): ?>
   <!-- Popup du menu hamburger, ancré en haut à droite -->
-  <div class="menu-popup" id="menuPopup" hidden>
+  <div class="menu-popup" id="menuPopup" role="dialog" aria-modal="true" aria-labelledby="menuPopupTitle" hidden>
     <div class="menu-popup-header">
-      <h3>Menu</h3>
+      <h3 id="menuPopupTitle">Menu</h3>
       <button type="button" class="menu-popup-close" id="menuPopupClose" aria-label="Fermer">&times;</button>
     </div>
 
@@ -79,22 +130,38 @@ rsort($annees); // les plus récentes en premier
     <a href="suivi_modifications.php" class="menu-popup-item">Suivi des modifications</a>
     <button type="button" class="menu-popup-item" id="securityMenuBtn">Sécurité du compte</button>
     <button type="button" class="menu-popup-item" id="displayMenuBtn">Affichage</button>
-    <a href="logout.php" class="menu-popup-item menu-popup-item-danger">Déconnexion</a>
+    <!-- Correction 3.14 : déconnexion en POST + CSRF plutôt qu'un simple lien GET
+         (un lien peut être suivi par un tiers, un préchargement de navigateur,
+         un robot d'indexation...). Le bouton reprend les classes existantes
+         pour garder le même rendu visuel qu'avant. -->
+    <form method="POST" action="logout.php" class="menu-popup-item-form">
+      <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+      <button type="submit" class="menu-popup-item menu-popup-item-danger menu-popup-item-btn">Déconnexion</button>
+    </form>
   </div>
-  <?php endif; ?>
 
-  <?php if (!empty($_SESSION['user_id'])): ?>
   <!-- Popup "Sécurité du compte" : changement de mot de passe -->
-  <div class="login-popup" id="securityPopup" hidden>
+  <div class="login-popup" id="securityPopup" role="dialog" aria-modal="true" aria-labelledby="securityPopupTitle" hidden>
     <div class="login-popup-header">
-      <h3>Sécurité du compte</h3>
+      <h3 id="securityPopupTitle">Sécurité du compte</h3>
       <button type="button" class="login-popup-close" id="securityPopupClose" aria-label="Fermer">&times;</button>
     </div>
 
+    <?php if (!empty($autresAdmins)): ?>
+    <!-- Onglets visibles uniquement pour un compte admin ayant au moins un autre
+         admin en base : permet de basculer entre son propre mot de passe et la
+         réinitialisation de celui d'un collègue admin qui l'aurait oublié. -->
+    <div class="security-popup-tabs" id="securityPopupTabs">
+      <button type="button" class="security-popup-tab active" data-tab="soi">Mon mot de passe</button>
+      <button type="button" class="security-popup-tab" data-tab="admin">Un autre admin</button>
+    </div>
+    <?php endif; ?>
+
     <div class="login-popup-error" id="securityPopupError" hidden></div>
 
-    <form id="securityPopupForm">
+    <form id="securityPopupForm" data-tab-panel="soi">
       <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+      <input type="hidden" name="mode" value="soi">
 
       <div class="login-popup-field">
         <label for="securityAncien">Mot de passe actuel</label>
@@ -111,12 +178,43 @@ rsort($annees); // les plus récentes en premier
 
       <button type="submit" class="login-popup-submit" id="securityPopupSubmit">Changer le mot de passe</button>
     </form>
+
+    <?php if (!empty($autresAdmins)): ?>
+    <!-- Réinitialisation du mot de passe d'un AUTRE admin (cas d'oubli) : pas
+         besoin de l'ancien mot de passe, protégé côté serveur par le rôle admin. -->
+    <form id="securityPopupAdminForm" data-tab-panel="admin" hidden>
+      <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+      <input type="hidden" name="mode" value="admin_reinit">
+
+      <p class="fiche-empty" style="margin-bottom:14px;">À utiliser uniquement si l'autre administrateur a oublié son mot de passe.</p>
+
+      <div class="login-popup-field">
+        <label for="securityAdminCible">Compte administrateur</label>
+        <select id="securityAdminCible" name="id_cible" required>
+          <option value="" disabled selected>Sélectionner…</option>
+          <?php foreach ($autresAdmins as $admin): ?>
+            <option value="<?= (int) $admin['id'] ?>"><?= htmlspecialchars($admin['nom']) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <div class="login-popup-field">
+        <label for="securityAdminNouveau">Nouveau mot de passe</label>
+        <input type="password" id="securityAdminNouveau" name="nouveau_mot_de_passe" placeholder="8 caractères minimum" minlength="8" required autocomplete="new-password">
+      </div>
+      <div class="login-popup-field">
+        <label for="securityAdminConfirme">Confirmer le nouveau mot de passe</label>
+        <input type="password" id="securityAdminConfirme" name="confirme_mot_de_passe" placeholder="Retapez le nouveau mot de passe" minlength="8" required autocomplete="new-password">
+      </div>
+
+      <button type="submit" class="login-popup-submit" id="securityPopupAdminSubmit">Réinitialiser le mot de passe</button>
+    </form>
+    <?php endif; ?>
   </div>
 
   <!-- Popup "Affichage" : mode sombre -->
-  <div class="login-popup" id="displayPopup" hidden>
+  <div class="login-popup" id="displayPopup" role="dialog" aria-modal="true" aria-labelledby="displayPopupTitle" hidden>
     <div class="login-popup-header">
-      <h3>Affichage</h3>
+      <h3 id="displayPopupTitle">Affichage</h3>
       <button type="button" class="login-popup-close" id="displayPopupClose" aria-label="Fermer">&times;</button>
     </div>
 
@@ -128,35 +226,6 @@ rsort($annees); // les plus récentes en premier
       </label>
     </div>
   </div>
-  <?php endif; ?>
-
-  <?php if (empty($_SESSION['user_id'])): ?>
-  <!-- Popup de connexion, ancré en haut à droite -->
-  <div class="login-popup" id="loginPopup" hidden>
-    <div class="login-popup-header">
-      <h3>Connexion</h3>
-      <button type="button" class="login-popup-close" id="loginPopupClose" aria-label="Fermer">&times;</button>
-    </div>
-
-    <div class="login-popup-error" id="loginPopupError" hidden></div>
-
-    <form id="loginPopupForm">
-      <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
-
-      <div class="login-popup-field">
-        <label for="loginPopupNom">Nom</label>
-        <input type="text" id="loginPopupNom" name="nom" placeholder="Entrez votre nom" required>
-      </div>
-
-      <div class="login-popup-field">
-        <label for="loginPopupMdp">Mot de passe</label>
-        <input type="password" id="loginPopupMdp" name="mot_de_passe" placeholder="Entrez votre mot de passe" required>
-      </div>
-
-      <button type="submit" class="login-popup-submit" id="loginPopupSubmit">Se connecter</button>
-    </form>
-  </div>
-  <?php endif; ?>
 
   <main class="content">
     <div class="toolbar">
@@ -171,9 +240,7 @@ rsort($annees); // les plus récentes en premier
       </div>
 
       <div class="toolbar-right">
-        <?php if (isLoggedIn()): ?>
-          <a href="formulaire_stagiaires.php" class="add-btn">+ Nouveau stagiaire</a>
-        <?php endif; ?>
+        <a href="formulaire_stagiaires.php" class="add-btn">+ Nouveau stagiaire</a>
       </div>
     </div>
 
@@ -219,21 +286,19 @@ rsort($annees); // les plus récentes en premier
     <?php if (empty($stagiaires)): ?>
       <div class="empty-state">
         <p>Aucun stagiaire enregistré pour le moment.</p>
-        <?php if (isLoggedIn()): ?>
-          <a href="formulaire_stagiaires.php" class="add-btn">+ Ajouter le premier stagiaire</a>
-        <?php endif; ?>
+        <a href="formulaire_stagiaires.php" class="add-btn">+ Ajouter le premier stagiaire</a>
       </div>
     <?php else: ?>
       <div class="stagiaire-grid" id="stagiaireGrid">
         <?php foreach ($stagiaires as $s):
           $initiales = mb_strtoupper(mb_substr($s['prenom'], 0, 1) . mb_substr($s['nom'], 0, 1));
-          $rempli    = (int) $s['nb_tech'] + (int) $s['nb_hum'] + (int) $s['nb_badge'];
+          $rempli    = (int) $s['nb_notes'];
           $pct       = $totalItems > 0 ? (int) round(($rempli / $totalItems) * 100) : 0;
           $annee     = $s['date_debut'] ? date('Y', strtotime($s['date_debut'])) : '';
         ?>
           <article
             class="stagiaire-card"
-            data-id="<?= (int) $s['id_stagiaire'] ?>"
+            data-id="<?= (int) $s['id_stage'] ?>"
             data-nom="<?= htmlspecialchars(mb_strtolower($s['nom'] . ' ' . $s['prenom'])) ?>"
             data-classe="<?= htmlspecialchars($s['classe']) ?>"
             data-etablissement="<?= htmlspecialchars($s['etablissement']) ?>"
@@ -258,7 +323,7 @@ rsort($annees); // les plus récentes en premier
                 <div class="progress-fill" style="width: <?= $pct ?>%;"></div>
               </div>
               <span class="progress-label">
-                <?= $pct ?>% évalué
+                <?= $pct ?>% évalué (dernière séance)
                 <?php if ($s['note'] !== null): ?>
                   · Note : <?= htmlspecialchars(rtrim(rtrim(number_format((float) $s['note'], 2, '.', ''), '0'), '.')) ?>/20
                 <?php endif; ?>
@@ -295,6 +360,53 @@ rsort($annees); // les plus récentes en premier
   </div>
 
   <script>
+    // ── Accessibilité des fenêtres modales (correction 3.20) ──
+    // Piège le focus clavier à l'intérieur d'une modale ouverte (Tab/Shift+Tab
+    // ne sortent plus de la fenêtre) et rend le focus à l'élément qui l'a
+    // ouverte lors de la fermeture, plutôt que de le laisser sur <body>.
+    function creerPiegeFocus(dialogEl) {
+      let declencheur = null;
+
+      function elementsFocusables() {
+        return Array.from(dialogEl.querySelectorAll(
+          'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )).filter(el => el.offsetParent !== null);
+      }
+
+      function surTab(e) {
+        if (e.key !== 'Tab') return;
+        const focusables = elementsFocusables();
+        if (focusables.length === 0) return;
+        const premier = focusables[0];
+        const dernier = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === premier) {
+          e.preventDefault();
+          dernier.focus();
+        } else if (!e.shiftKey && document.activeElement === dernier) {
+          e.preventDefault();
+          premier.focus();
+        }
+      }
+
+      return {
+        activer(elementDeclencheur) {
+          declencheur = elementDeclencheur || document.activeElement;
+          dialogEl.addEventListener('keydown', surTab);
+          // Laisse le contenu (parfois chargé en fetch) s'installer avant de focaliser.
+          requestAnimationFrame(() => {
+            const focusables = elementsFocusables();
+            (focusables[0] || dialogEl).focus();
+          });
+        },
+        desactiver() {
+          dialogEl.removeEventListener('keydown', surTab);
+          if (declencheur && typeof declencheur.focus === 'function') {
+            declencheur.focus();
+          }
+        },
+      };
+    }
+
     const searchInput = document.getElementById('searchInput');
     const filterClasse = document.getElementById('filterClasse');
     const filterEtablissement = document.getElementById('filterEtablissement');
@@ -402,12 +514,15 @@ rsort($annees); // les plus récentes en premier
     const modalOverlay = document.getElementById('modalOverlay');
     const modalBody = document.getElementById('modalBody');
     const modalBack = document.getElementById('modalBack');
+    const modalDialog = modalOverlay ? modalOverlay.querySelector('.modal') : null;
+    const piegeModal = modalDialog ? creerPiegeFocus(modalDialog) : null;
 
-    function openFiche(id) {
+    function openFiche(id, declencheur) {
       modalOverlay.removeAttribute('hidden');
       modalBody.innerHTML = '<p class="fiche-loading">Chargement…</p>';
+      if (piegeModal) piegeModal.activer(declencheur);
 
-      fetch('comp.php?id=' + encodeURIComponent(id))
+      fetch('stagiaire_detail_fragment.php?id=' + encodeURIComponent(id))
         .then(response => {
           if (!response.ok) throw new Error('Erreur ' + response.status);
           return response.text();
@@ -422,6 +537,7 @@ rsort($annees); // les plus récentes en premier
 
     function closeFiche() {
       modalOverlay.setAttribute('hidden', '');
+      if (piegeModal) piegeModal.desactiver();
     }
 
     // Délégation d'événements : fonctionne aussi bien sur la grille simple
@@ -431,13 +547,13 @@ rsort($annees); // les plus récentes en premier
 
       container.addEventListener('click', (e) => {
         const card = e.target.closest('.stagiaire-card');
-        if (card) openFiche(card.dataset.id);
+        if (card) openFiche(card.dataset.id, card);
       });
 
       container.addEventListener('keydown', (e) => {
         if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('stagiaire-card')) {
           e.preventDefault();
-          openFiche(e.target.dataset.id);
+          openFiche(e.target.dataset.id, e.target);
         }
       });
     }
@@ -455,83 +571,6 @@ rsort($annees); // les plus récentes en premier
       if (e.key === 'Escape' && !modalOverlay.hasAttribute('hidden')) closeFiche();
     });
 
-    // ── Popup de connexion (haut à droite) ──
-    (function() {
-      const loginBtn = document.getElementById('loginBtn');
-      const loginPopup = document.getElementById('loginPopup');
-      if (!loginBtn || !loginPopup) return;
-
-      const loginPopupClose = document.getElementById('loginPopupClose');
-      const loginPopupForm = document.getElementById('loginPopupForm');
-      const loginPopupError = document.getElementById('loginPopupError');
-      const loginPopupSubmit = document.getElementById('loginPopupSubmit');
-      const loginPopupNom = document.getElementById('loginPopupNom');
-
-      function openPopup() {
-        loginPopup.removeAttribute('hidden');
-        loginBtn.setAttribute('aria-expanded', 'true');
-        loginPopupNom.focus();
-      }
-
-      function closePopup() {
-        loginPopup.setAttribute('hidden', '');
-        loginBtn.setAttribute('aria-expanded', 'false');
-      }
-
-      loginBtn.addEventListener('click', () => {
-        if (loginPopup.hasAttribute('hidden')) {
-          openPopup();
-        } else {
-          closePopup();
-        }
-      });
-
-      if (loginPopupClose) loginPopupClose.addEventListener('click', closePopup);
-
-      document.addEventListener('click', (e) => {
-        if (!loginPopup.hasAttribute('hidden') && !loginPopup.contains(e.target) && e.target !== loginBtn) {
-          closePopup();
-        }
-      });
-
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !loginPopup.hasAttribute('hidden')) closePopup();
-      });
-
-      if (loginPopupForm) {
-        loginPopupForm.addEventListener('submit', (e) => {
-          e.preventDefault();
-
-          loginPopupError.hidden = true;
-          loginPopupSubmit.disabled = true;
-          loginPopupSubmit.textContent = 'Connexion…';
-
-          fetch('login.php', {
-            method: 'POST',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            body: new FormData(loginPopupForm),
-          })
-            .then(response => response.json())
-            .then(data => {
-              if (data.success) {
-                window.location.href = data.redirect || 'index.php';
-              } else {
-                loginPopupError.textContent = data.erreur || 'Erreur de connexion.';
-                loginPopupError.hidden = false;
-                loginPopupSubmit.disabled = false;
-                loginPopupSubmit.textContent = 'Se connecter';
-              }
-            })
-            .catch(() => {
-              loginPopupError.textContent = 'Une erreur est survenue. Merci de réessayer.';
-              loginPopupError.hidden = false;
-              loginPopupSubmit.disabled = false;
-              loginPopupSubmit.textContent = 'Se connecter';
-            });
-        });
-      }
-    })();
-
     // ── Popup du menu hamburger (haut à droite) ──
     (function() {
       const menuBtn = document.getElementById('menuBtn');
@@ -539,15 +578,18 @@ rsort($annees); // les plus récentes en premier
       if (!menuBtn || !menuPopup) return;
 
       const menuPopupClose = document.getElementById('menuPopupClose');
+      const piege = creerPiegeFocus(menuPopup);
 
       function openMenu() {
         menuPopup.removeAttribute('hidden');
         menuBtn.setAttribute('aria-expanded', 'true');
+        piege.activer(menuBtn);
       }
 
       function closeMenu() {
         menuPopup.setAttribute('hidden', '');
         menuBtn.setAttribute('aria-expanded', 'false');
+        piege.desactiver();
       }
 
       menuBtn.addEventListener('click', () => {
@@ -579,22 +621,49 @@ rsort($annees); // les plus récentes en premier
 
       const securityPopupClose = document.getElementById('securityPopupClose');
       const securityPopupForm = document.getElementById('securityPopupForm');
+      const securityPopupAdminForm = document.getElementById('securityPopupAdminForm');
       const securityPopupError = document.getElementById('securityPopupError');
       const securityPopupSubmit = document.getElementById('securityPopupSubmit');
+      const securityPopupAdminSubmit = document.getElementById('securityPopupAdminSubmit');
+      const securityPopupTabs = document.getElementById('securityPopupTabs');
       const menuPopupEl = document.getElementById('menuPopup');
       const menuBtnEl = document.getElementById('menuBtn');
+      const piege = creerPiegeFocus(securityPopup);
+
+      // ── Onglets "Mon mot de passe" / "Un autre admin" (n'existent que pour un admin) ──
+      function activerOnglet(nomOnglet) {
+        if (!securityPopupTabs) return;
+        securityPopupTabs.querySelectorAll('.security-popup-tab').forEach(tab => {
+          tab.classList.toggle('active', tab.dataset.tab === nomOnglet);
+        });
+        securityPopupForm.hidden = nomOnglet !== 'soi';
+        if (securityPopupAdminForm) securityPopupAdminForm.hidden = nomOnglet !== 'admin';
+        securityPopupError.hidden = true;
+      }
+
+      if (securityPopupTabs) {
+        securityPopupTabs.querySelectorAll('.security-popup-tab').forEach(tab => {
+          tab.addEventListener('click', () => activerOnglet(tab.dataset.tab));
+        });
+      }
 
       function openSecurityPopup() {
         if (menuPopupEl) menuPopupEl.setAttribute('hidden', '');
         if (menuBtnEl) menuBtnEl.setAttribute('aria-expanded', 'false');
         securityPopupError.hidden = true;
         securityPopupForm.reset();
+        if (securityPopupAdminForm) securityPopupAdminForm.reset();
+        activerOnglet('soi');
         securityPopup.removeAttribute('hidden');
-        document.getElementById('securityAncien').focus();
+        // creerPiegeFocus place le focus sur le premier champ et piège Tab/Shift+Tab
+        // à l'intérieur de la popup ; au retour, le focus revient sur le bouton
+        // hamburger (déclencheur visible après fermeture du sous-menu).
+        piege.activer(menuBtnEl);
       }
 
       function closeSecurityPopup() {
         securityPopup.setAttribute('hidden', '');
+        piege.desactiver();
       }
 
       securityMenuBtn.addEventListener('click', openSecurityPopup);
@@ -610,23 +679,26 @@ rsort($annees); // les plus récentes en premier
         if (e.key === 'Escape' && !securityPopup.hasAttribute('hidden')) closeSecurityPopup();
       });
 
-      if (securityPopupForm) {
-        securityPopupForm.addEventListener('submit', (e) => {
+      // Gestion de la soumission, factorisée pour servir aux deux formulaires
+      // (changement de son propre mot de passe / réinitialisation d'un autre admin).
+      function brancherSoumission(form, submitBtn, texteEnCours, texteParDefaut) {
+        if (!form) return;
+        form.addEventListener('submit', (e) => {
           e.preventDefault();
 
           securityPopupError.hidden = true;
-          securityPopupSubmit.disabled = true;
-          securityPopupSubmit.textContent = 'Enregistrement…';
+          submitBtn.disabled = true;
+          submitBtn.textContent = texteEnCours;
 
           fetch('securite_compte.php', {
             method: 'POST',
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            body: new FormData(securityPopupForm),
+            body: new FormData(form),
           })
             .then(response => response.json())
             .then(data => {
-              securityPopupSubmit.disabled = false;
-              securityPopupSubmit.textContent = 'Changer le mot de passe';
+              submitBtn.disabled = false;
+              submitBtn.textContent = texteParDefaut;
 
               if (data.success) {
                 closeSecurityPopup();
@@ -640,13 +712,16 @@ rsort($annees); // les plus récentes en premier
               }
             })
             .catch(() => {
-              securityPopupSubmit.disabled = false;
-              securityPopupSubmit.textContent = 'Changer le mot de passe';
+              submitBtn.disabled = false;
+              submitBtn.textContent = texteParDefaut;
               securityPopupError.textContent = 'Une erreur est survenue. Merci de réessayer.';
               securityPopupError.hidden = false;
             });
         });
       }
+
+      brancherSoumission(securityPopupForm, securityPopupSubmit, 'Enregistrement…', 'Changer le mot de passe');
+      brancherSoumission(securityPopupAdminForm, securityPopupAdminSubmit, 'Enregistrement…', 'Réinitialiser le mot de passe');
     })();
 
     // ── Pop-up "Affichage" (mode sombre) ──
@@ -660,15 +735,18 @@ rsort($annees); // les plus récentes en premier
       const menuPopupEl = document.getElementById('menuPopup');
       const menuBtnEl = document.getElementById('menuBtn');
       const csrfToken = <?= json_encode(csrfToken()) ?>;
+      const piege = creerPiegeFocus(displayPopup);
 
       function openDisplayPopup() {
         if (menuPopupEl) menuPopupEl.setAttribute('hidden', '');
         if (menuBtnEl) menuBtnEl.setAttribute('aria-expanded', 'false');
         displayPopup.removeAttribute('hidden');
+        piege.activer(menuBtnEl);
       }
 
       function closeDisplayPopup() {
         displayPopup.setAttribute('hidden', '');
+        piege.desactiver();
       }
 
       displayMenuBtn.addEventListener('click', openDisplayPopup);

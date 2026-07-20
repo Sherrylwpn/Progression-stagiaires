@@ -1,4 +1,9 @@
 <?php
+// ⚠️ DEBUG UNIQUEMENT — à retirer avant la mise en production
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+
 require_once 'config.php';
 
 // Si déjà connecté → rediriger
@@ -19,11 +24,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // ── Sanitisation EN PREMIER ──
     $nom          = trim($_POST['nom'] ?? '');
     $mot_de_passe = trim($_POST['mot_de_passe'] ?? '');
+    $ip           = getClientIp();
 
     if ($nom === '' || $mot_de_passe === '') {
         $erreur = "Veuillez remplir tous les champs.";
-    } elseif (!empty($_SESSION['login_lock_until']) && time() < $_SESSION['login_lock_until']) {
-        $attente = $_SESSION['login_lock_until'] - time();
+    } elseif (estVerrouille($nom, $ip)) {
+        $attente = secondesAvantDeverrouillage($nom, $ip);
         $erreur = "Trop de tentatives échouées. Réessayez dans {$attente} secondes.";
     } else {
         $pdo  = getDB();
@@ -31,7 +37,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([':nom' => $nom]);
         $utilisateur = $stmt->fetch();
 
-        if ($utilisateur && password_verify($mot_de_passe, $utilisateur['mot_de_passe'])) {
+        if ($utilisateur && password_verify($mot_de_passe, $utilisateur['mot_de_passe']) && !(int) $utilisateur['actif']) {
+            // Mot de passe correct mais compte désactivé (correction 3.13) : on ne
+            // compte pas ça comme un échec de brute-force (les identifiants étaient
+            // corrects), mais on refuse quand même l'accès avec un message explicite.
+            $erreur = "Ce compte a été désactivé. Contactez un administrateur.";
+        } elseif ($utilisateur && password_verify($mot_de_passe, $utilisateur['mot_de_passe'])) {
             // Régénère l'identifiant de session à chaque connexion : empêche la
             // fixation de session (un attaquant ne peut pas réutiliser un id
             // de session obtenu avant l'authentification).
@@ -39,9 +50,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $_SESSION['user_id']      = $utilisateur['id'];
             $_SESSION['user_nom']     = $utilisateur['nom'];
+            $_SESSION['role']         = $utilisateur['role'] ?? 'utilisateur';
+            $_SESSION['actif']        = true;
             $_SESSION['logged_at']    = time();
+            // Correction 3.14 : sert à faire expirer la session par inactivité
+            // (contrôlé à chaque requête dans requireAuth()).
+            $_SESSION['last_activity'] = time();
             $_SESSION['mode_sombre']  = (bool) ($utilisateur['mode_sombre'] ?? false);
-            unset($_SESSION['login_attempts'], $_SESSION['login_lock_until']);
+            viderEchecsConnexion($nom, $ip);
 
             if ($estAjax) {
                 header('Content-Type: application/json');
@@ -52,11 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header("Location: index.php");
             exit;
         } else {
-            $_SESSION['login_attempts'] = ($_SESSION['login_attempts'] ?? 0) + 1;
-            if ($_SESSION['login_attempts'] >= 5) {
-                $_SESSION['login_lock_until'] = time() + 60; // 1 minute de blocage après 5 échecs
-                $_SESSION['login_attempts'] = 0;
-            }
+            enregistrerEchecConnexion($nom, $ip);
             $erreur = "Nom ou mot de passe incorrect.";
         }
     }
@@ -75,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Connexion — SNI Hôtel</title>
+    <title>Connexion — Suivi stagiaire</title>
     <link rel="stylesheet" href="login.css">
 </head>
 <body>
@@ -88,6 +100,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <?php if (isset($_GET['expired'])): ?>
             <div class="error-msg">Votre session a expiré. Veuillez vous reconnecter.</div>
+        <?php endif; ?>
+
+        <?php if (isset($_GET['desactive'])): ?>
+            <div class="error-msg">Ce compte a été désactivé. Contactez un administrateur.</div>
         <?php endif; ?>
 
         <form method="POST" action="login.php">

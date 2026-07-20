@@ -1,6 +1,6 @@
 <?php
 require_once 'config.php';
-requireAuth(); // Seuls les 2 utilisateurs connectés peuvent supprimer un stagiaire
+requireAuth(); // Seuls les utilisateurs connectés peuvent supprimer une fiche
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -9,8 +9,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 verifyCsrf();
 
-$id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
-if (!$id) {
+// L'id transmis par le formulaire est désormais un id_stage (une fiche = un stage,
+// cf. correction 3.4 : une personne peut avoir plusieurs stages).
+$idStage = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
+if (!$idStage) {
     http_response_code(400);
     exit('ID invalide.');
 }
@@ -19,8 +21,12 @@ $pdo = getDB();
 
 // On récupère le nom du stagiaire AVANT suppression, pour pouvoir
 // le conserver lisible dans le journal des modifications.
-$stmtInfo = $pdo->prepare("SELECT nom, prenom FROM stagiaire WHERE id_stagiaire = ?");
-$stmtInfo->execute([$id]);
+$stmtInfo = $pdo->prepare(
+    "SELECT s.nom, s.prenom
+     FROM stage st JOIN stagiaire s ON s.id_stagiaire = st.id_stagiaire
+     WHERE st.id_stage = ?"
+);
+$stmtInfo->execute([$idStage]);
 $infoStagiaire = $stmtInfo->fetch();
 
 if (!$infoStagiaire) {
@@ -31,20 +37,26 @@ if (!$infoStagiaire) {
 try {
     $pdo->beginTransaction();
 
-    // On supprime d'abord les évaluations liées, au cas où la base
-    // n'aurait pas de contrainte ON DELETE CASCADE.
-    $pdo->prepare("DELETE FROM evaluation_competence_technique WHERE id_stagiaire = ?")->execute([$id]);
-    $pdo->prepare("DELETE FROM evaluation_competence_humaine WHERE id_stagiaire = ?")->execute([$id]);
-    $pdo->prepare("DELETE FROM evaluation_badge WHERE id_stagiaire = ?")->execute([$id]);
-    $pdo->prepare("DELETE FROM stagiaire WHERE id_stagiaire = ?")->execute([$id]);
+    // Les évaluations et leurs notes de compétences sont supprimées en cascade
+    // par les contraintes ON DELETE CASCADE du schéma (evaluation -> stage,
+    // evaluation_competence_* -> evaluation). Il suffit de supprimer le stage.
+    $pdo->prepare("DELETE FROM stage WHERE id_stage = ?")->execute([$idStage]);
+
+    // Correction 3.5 : la journalisation fait partie de la même transaction et
+    // s'exécute AVANT le commit, afin que suppression et trace d'audit réussissent
+    // ou échouent ensemble.
+    logAction('suppression', null, $infoStagiaire['nom'] . ' ' . $infoStagiaire['prenom']);
 
     $pdo->commit();
-
-    logAction('suppression', null, $infoStagiaire['nom'] . ' ' . $infoStagiaire['prenom']);
 } catch (Exception $e) {
-    $pdo->rollBack();
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    // Correction (revue fichier par fichier) : ne pas renvoyer le message
+    // d'exception brut à l'utilisateur ; le détail part dans les logs serveur.
+    error_log('delete_stagiaire.php : erreur suppression stage — ' . $e->getMessage());
     http_response_code(500);
-    exit("Erreur lors de la suppression : " . htmlspecialchars($e->getMessage()));
+    exit("Erreur lors de la suppression. Merci de réessayer.");
 }
 
 header("Location: index.php?supprime=1");
