@@ -980,6 +980,15 @@ button.menu-popup-item {
   background-color: var(--color-primary-tint-2);
 }
 
+.fiche-btn-evolution {
+  background-color: var(--color-accent-tint);
+  color: var(--color-accent-dark);
+}
+
+.fiche-btn-evolution:hover {
+  background-color: #f2e3c2;
+}
+
 .fiche-btn-delete {
   background-color: var(--color-danger-bg);
   color: var(--color-danger-text);

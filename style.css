@@ -94,20 +94,6 @@ body {
   box-shadow: var(--shadow-sm);
 }
 
-/* ── Bouton "Enregistrer" du header (formulaire_stagiaires.php) ── */
-/* Même style que .back-btn ; seule différence : poussé à droite et sans bordure de <button>. */
-.header-submit-btn {
-  margin-left: auto;
-  border: none;
-  cursor: pointer;
-}
-
-@media (max-width: 640px) {
-  .header-submit-btn {
-    margin-left: 0;
-  }
-}
-
 /* ── Contenu ── */
 .content {
   padding: 28px 32px 48px;
@@ -269,8 +255,9 @@ body {
   color: var(--color-text-muted);
 }
 
-.evolution-chart-card canvas {
-  width: 100%;
+.evolution-chart-canvas-wrap {
+  position: relative;
+  height: 220px;
 }
 
 @media (max-width: 1150px) {
@@ -341,6 +328,33 @@ body {
 .submit-btn:hover {
   background-color: var(--color-primary-2);
   box-shadow: var(--shadow-md);
+}
+
+/* ── Conteneur des boutons d'action en bas de la colonne Badges ── */
+.fiche-form-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.fiche-form-actions .submit-btn {
+  margin-top: 0;
+}
+
+.submit-btn-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  background-color: var(--color-accent-tint);
+  color: var(--color-accent-dark);
+  box-shadow: none;
+}
+
+.submit-btn-secondary:hover {
+  background-color: #f2e3c2;
+  box-shadow: none;
 }
 
 /* ── Responsive ── */

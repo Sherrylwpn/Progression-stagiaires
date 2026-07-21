@@ -544,12 +544,6 @@ function renderStarInput(string $name, int $max, int $value): string
   <header class="header">
     <a href="index.php" class="back-btn">&larr; Retour</a>
     <h1><?= $idEdition ? 'Modifier le stagiaire' : 'Nouveau stagiaire' ?></h1>
-    <?php if ($idEdition && $aDesEvaluations): ?>
-      <a href="evolution.php?id=<?= (int) $idEdition ?>" class="back-btn">Voir l'évolution</a>
-    <?php endif; ?>
-    <button type="submit" form="ficheForm" class="back-btn header-submit-btn">
-      <?= $idEdition ? 'Enregistrer les modifications' : 'Enregistrer le stagiaire' ?>
-    </button>
   </header>
 
   <main class="content">
@@ -680,6 +674,15 @@ function renderStarInput(string $name, int $max, int $value): string
                       placeholder="Observations sur cette séance d'évaluation…"
                       style="width:100%;resize:vertical;font:inherit;padding:8px;box-sizing:border-box;"
             ><?= htmlspecialchars($commentaireExistant ?? '') ?></textarea>
+          </div>
+
+          <div class="fiche-form-actions">
+            <?php if ($idEdition && $aDesEvaluations): ?>
+              <a href="evolution.php?id=<?= (int) $idEdition ?>" class="submit-btn submit-btn-secondary">Voir l'évolution</a>
+            <?php endif; ?>
+            <button type="submit" form="ficheForm" class="submit-btn">
+              <?= $idEdition ? 'Enregistrer les modifications' : 'Enregistrer le stagiaire' ?>
+            </button>
           </div>
         </section>
 

@@ -216,6 +216,7 @@ $initiales = mb_strtoupper(mb_substr($stage['prenom'], 0, 1) . mb_substr($stage[
 <?php if (isLoggedIn()): ?>
 <div class="fiche-actions">
   <a href="formulaire_stagiaires.php?id=<?= (int) $stage['id_stage'] ?>" class="fiche-btn fiche-btn-edit">Modifier / nouvelle évaluation</a>
+  <a href="evolution.php?id=<?= (int) $stage['id_stage'] ?>" class="fiche-btn fiche-btn-evolution">Voir l'évolution</a>
   <form method="POST" action="delete_stagiaire.php" onsubmit="return confirm('Supprimer définitivement ce stage et toutes ses évaluations ?');" style="flex:1;">
     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
     <input type="hidden" name="id" value="<?= (int) $stage['id_stage'] ?>">

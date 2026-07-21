@@ -120,7 +120,7 @@ $aucuneSeance = empty($seances);
   <title>Évolution — <?= htmlspecialchars($stagiaire['prenom'] . ' ' . $stagiaire['nom']) ?></title>
   <link rel="stylesheet" href="style.css">
   <?php if ($aQuelqueChoseAAfficher): ?>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+  <script src="chart.min.js"></script>
   <?php endif; ?>
 </head>
 <body class="<?= bodyClass() ?>">
@@ -149,25 +149,25 @@ $aucuneSeance = empty($seances);
             <?php if (!empty($evolutionNote)): ?>
             <div class="evolution-chart-card">
               <p class="evolution-chart-title">Notation globale <span>/20</span></p>
-              <canvas id="evolutionChartNote" height="150"></canvas>
+              <div class="evolution-chart-canvas-wrap"><canvas id="evolutionChartNote"></canvas></div>
             </div>
             <?php endif; ?>
             <?php if (!empty($evolutionTechnique)): ?>
             <div class="evolution-chart-card">
               <p class="evolution-chart-title">Compétences techniques <span>/3</span></p>
-              <canvas id="evolutionChartTech" height="150"></canvas>
+              <div class="evolution-chart-canvas-wrap"><canvas id="evolutionChartTech"></canvas></div>
             </div>
             <?php endif; ?>
             <?php if (!empty($evolutionHumaine)): ?>
             <div class="evolution-chart-card">
               <p class="evolution-chart-title">Compétences humaines <span>/5</span></p>
-              <canvas id="evolutionChartHumaine" height="150"></canvas>
+              <div class="evolution-chart-canvas-wrap"><canvas id="evolutionChartHumaine"></canvas></div>
             </div>
             <?php endif; ?>
             <?php if (!empty($evolutionBadge)): ?>
             <div class="evolution-chart-card">
               <p class="evolution-chart-title">Badges <span>/3</span></p>
-              <canvas id="evolutionChartBadge" height="150"></canvas>
+              <div class="evolution-chart-canvas-wrap"><canvas id="evolutionChartBadge"></canvas></div>
             </div>
             <?php endif; ?>
           </div>
@@ -189,7 +189,7 @@ $aucuneSeance = empty($seances);
       const palette = ['#3d1550', '#b8862e', '#2f8f45', '#6a2f86', '#d9573f', '#1f6b8f', '#8a5aa8', '#c9a227'];
 
       function degrade(ctx, couleur) {
-        const g = ctx.createLinearGradient(0, 0, 0, 150);
+        const g = ctx.createLinearGradient(0, 0, 0, 220);
         g.addColorStop(0, couleur + '2a');
         g.addColorStop(1, couleur + '00');
         return g;
