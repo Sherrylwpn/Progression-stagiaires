@@ -1,0 +1,49 @@
+# ══════════════════════════════════════════════════════════
+#  .htaccess — Suivi stagiaire
+#  À placer à la racine de l'application (même dossier que
+#  index.php, login.php, config.php, etc.)
+#  Testé pour Apache 2.4 (celui fourni avec XAMPP).
+# ══════════════════════════════════════════════════════════
+
+# ── Empêche l'affichage du contenu d'un dossier quand il n'y a pas d'index ──
+Options -Indexes
+
+# ── Fichiers jamais destinés à être ouverts directement dans un navigateur ──
+# config.php n'est utilisé que via require_once() depuis les autres pages PHP :
+# le bloquer en accès direct ne casse rien pour l'application (le require_once
+# côté serveur n'est pas concerné par les règles Apache, qui ne s'appliquent
+# qu'aux requêtes HTTP entrantes), et évite qu'une visite directe à cette URL
+# n'expose un jour un message d'erreur ou un détail technique.
+<Files "config.php">
+    Require all denied
+</Files>
+
+# ── Fichiers cachés : .env, .git, .htaccess lui-même, etc. ──
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# ── Fichiers de sauvegarde / temporaires qu'un éditeur ou un export peut laisser traîner ──
+# (ex. config.php.bak, dump.sql, notes.old...) : jamais destinés à être servis.
+<FilesMatch "\.(bak|old|orig|save|swp|swo|tmp|log|sql|zip|rar|7z)$">
+    Require all denied
+</FilesMatch>
+
+# ── Désactive l'exécution PHP dans un éventuel dossier d'uploads ──
+# Si vous ajoutez plus tard un dossier où les utilisateurs peuvent déposer des
+# fichiers (photos, justificatifs...), décommentez ces lignes en adaptant le
+# nom du dossier : cela empêche qu'un fichier malveillant déposé là ne soit
+# exécuté comme un script PHP par le serveur.
+# <Directory "uploads">
+#     <FilesMatch "\.(php|phtml|php\d)$">
+#         Require all denied
+#     </FilesMatch>
+# </Directory>
+
+# ── En-têtes de sécurité de base ──
+<IfModule mod_headers.c>
+    # Empêche le navigateur de "deviner" un type de contenu différent de celui annoncé
+    Header set X-Content-Type-Options "nosniff"
+    # Empêche l'affichage du site dans une <iframe> d'un autre site (protection anti-clickjacking)
+    Header set X-Frame-Options "SAMEORIGIN"
+</IfModule>

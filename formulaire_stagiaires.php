@@ -406,10 +406,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['flash_succes'] = $idEdition
                 ? "Stagiaire modifié avec succès."
                 : "Stagiaire enregistré avec succès.";
-            // Nouveau : uniquement pour une CRÉATION, on redirige automatiquement vers
-            // l'accueil juste après l'affichage du message, pour éviter à l'utilisateur
-            // de devoir cliquer sur "Retour".
-            $_SESSION['flash_redirection_accueil'] = !$idEdition;
+            // On redirige désormais systématiquement vers l'accueil après
+            // l'affichage du message, que ce soit une création ou une modification.
+            $_SESSION['flash_redirection_accueil'] = true;
             header("Location: formulaire_stagiaires.php?id=" . (int) $idStage);
             exit;
         } catch (Exception $e) {
@@ -497,22 +496,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $commentaireExistant    = $etat['commentaire'];
 }
 
-// ── Historique des évaluations (correction : graphique d'évolution) ──
-// Uniquement en mode édition : on récupère toutes les séances d'évaluation
-// passées de ce stage (note globale) pour tracer une courbe de progression.
-$historiqueEvaluations = [];
+// ── Lien vers la page dédiée à l'évolution des compétences (evolution.php) ──
+// On vérifie juste qu'il existe au moins une séance d'évaluation pour ce stage,
+// pour savoir si le lien "Voir l'évolution" a un sens à afficher ; le calcul
+// détaillé (quelles compétences ont varié, etc.) vit désormais dans evolution.php.
+$aDesEvaluations = false;
 if ($idEdition) {
-    $stmt = $pdo->prepare(
-        "SELECT date_evaluation, note FROM evaluation WHERE id_stage = ? ORDER BY date_evaluation ASC, id_evaluation ASC"
-    );
+    $stmt = $pdo->prepare("SELECT 1 FROM evaluation WHERE id_stage = ? LIMIT 1");
     $stmt->execute([$idEdition]);
-    $historiqueEvaluations = $stmt->fetchAll();
+    $aDesEvaluations = (bool) $stmt->fetchColumn();
 }
 
 /**
- * Génère un groupe d'étoiles SVG interactives, accompagné d'un bouton "Non évalué"
- * permettant de revenir à zéro (correction 3.7 : il était auparavant impossible de
- * retirer une étoile depuis l'interface), et de son input caché envoyé avec le formulaire.
+ * Génère un groupe d'étoiles SVG interactives. Cliquer sur une étoile déjà
+ * sélectionnée l'efface (retour à "non évalué"), et son input caché est envoyé
+ * avec le formulaire.
  */
 function renderStarInput(string $name, int $max, int $value): string
 {
@@ -527,7 +525,6 @@ function renderStarInput(string $name, int $max, int $value): string
                . '</svg>';
     }
     $html .= '</div>';
-    $html .= '<button type="button" class="stars-clear">Non évalué</button>';
     $html .= '<input type="hidden" class="rating-input" name="' . htmlspecialchars($name) . '" value="' . $value . '">';
     $html .= '</div>';
     return $html;
@@ -540,9 +537,6 @@ function renderStarInput(string $name, int $max, int $value): string
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><?= $idEdition ? 'Modifier le stagiaire' : 'Nouveau stagiaire' ?></title>
   <link rel="stylesheet" href="style.css">
-  <?php if ($idEdition && count($historiqueEvaluations) > 0): ?>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
-  <?php endif; ?>
 </head>
 <body class="<?= bodyClass() ?>">
   <div id="toast" class="toast"></div>
@@ -550,6 +544,9 @@ function renderStarInput(string $name, int $max, int $value): string
   <header class="header">
     <a href="index.php" class="back-btn">&larr; Retour</a>
     <h1><?= $idEdition ? 'Modifier le stagiaire' : 'Nouveau stagiaire' ?></h1>
+    <?php if ($idEdition && $aDesEvaluations): ?>
+      <a href="evolution.php?id=<?= (int) $idEdition ?>" class="back-btn">Voir l'évolution</a>
+    <?php endif; ?>
     <button type="submit" form="ficheForm" class="back-btn header-submit-btn">
       <?= $idEdition ? 'Enregistrer les modifications' : 'Enregistrer le stagiaire' ?>
     </button>
@@ -559,9 +556,6 @@ function renderStarInput(string $name, int $max, int $value): string
     <?php if ($erreur !== ''): ?>
       <div class="alert-error"><?= htmlspecialchars($erreur) ?></div>
     <?php endif; ?>
-    <?php if ($succes !== ''): ?>
-      <div class="alert-succes"><?= htmlspecialchars($succes) ?></div>
-    <?php endif; ?>
 
     <form id="ficheForm" method="POST" action="formulaire_stagiaires.php<?= $idEdition ? '?id=' . (int) $idEdition : '' ?>">
       <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
@@ -570,17 +564,6 @@ function renderStarInput(string $name, int $max, int $value): string
       <?php endif; ?>
 
       <div class="form-grid">
-
-        <?php if ($idEdition && count($historiqueEvaluations) > 0): ?>
-        <!-- Graphique d'évolution : note globale au fil des séances d'évaluation -->
-        <section class="form-col evolution-col">
-          <h3>Évolution de la notation</h3>
-          <?php if (count($historiqueEvaluations) === 1): ?>
-            <p class="fiche-empty" style="margin-bottom:10px;">Une seule séance d'évaluation enregistrée pour l'instant : la courbe se complétera au fil des prochaines modifications.</p>
-          <?php endif; ?>
-          <canvas id="evolutionChart" height="70"></canvas>
-        </section>
-        <?php endif; ?>
 
         <!-- Colonne 1 : Informations générales -->
         <section class="form-col">
@@ -729,7 +712,6 @@ function renderStarInput(string $name, int $max, int $value): string
       const container = wrap.querySelector('.stars-input');
       const stars = Array.from(container.querySelectorAll('.star'));
       const hiddenInput = wrap.querySelector('.rating-input');
-      const clearBtn = wrap.querySelector('.stars-clear');
       let currentRating = hiddenInput ? (parseInt(hiddenInput.value, 10) || 0) : 0;
 
       function paint(n) {
@@ -769,66 +751,10 @@ function renderStarInput(string $name, int $max, int $value): string
         });
       });
 
-      if (clearBtn) {
-        clearBtn.addEventListener('click', () => setRating(0));
-      }
-
       container.addEventListener('mouseleave', () => paint(currentRating));
 
       paint(currentRating);
     });
-
-    <?php if ($idEdition && count($historiqueEvaluations) > 0): ?>
-    // Courbe d'évolution de la note globale au fil des séances d'évaluation
-    (function() {
-      const ctx = document.getElementById('evolutionChart');
-      if (!ctx || typeof Chart === 'undefined') return;
-
-      const labels = <?= json_encode(array_map(function ($e) {
-          return $e['date_evaluation'] ? date('d/m/Y', strtotime($e['date_evaluation'])) : '—';
-      }, $historiqueEvaluations)) ?>;
-      const notes = <?= json_encode(array_map(function ($e) {
-          return $e['note'] !== null ? (float) $e['note'] : null;
-      }, $historiqueEvaluations)) ?>;
-
-      new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: labels,
-          datasets: [{
-            label: 'Note globale (/20)',
-            data: notes,
-            borderColor: '#b8862e',
-            backgroundColor: 'rgba(184, 134, 46, 0.15)',
-            spanGaps: true,
-            tension: 0.3,
-            fill: true,
-            pointBackgroundColor: '#3d1550',
-            pointBorderColor: '#3d1550',
-            pointRadius: 4,
-            pointHoverRadius: 6,
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            y: { min: 0, max: 20, ticks: { stepSize: 5 } }
-          },
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                label: function(item) {
-                  return item.parsed.y === null ? 'Non notée' : ('Note : ' + item.parsed.y + '/20');
-                }
-              }
-            }
-          }
-        }
-      });
-    })();
-    <?php endif; ?>
 
     <?php if ($succes !== ''): ?>
     // Affiche un petit popup de confirmation

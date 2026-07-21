@@ -50,7 +50,6 @@ body {
 }
 
 .login-container::before {
-  content: "SNI Hôtel";
   display: block;
   font-family: var(--font-display);
   font-size: 12px;

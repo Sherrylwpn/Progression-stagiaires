@@ -214,6 +214,49 @@ function changerMotDePasse(int $userId, string $ancien, string $nouveau, string 
     return ['succes' => true, 'message' => 'Mot de passe mis à jour avec succès.'];
 }
 
+/**
+ * Réinitialise le mot de passe d'un AUTRE compte administrateur, sans exiger
+ * l'ancien mot de passe : c'est précisément le scénario visé (un des deux
+ * admins a oublié le sien). L'appelant doit avoir déjà vérifié que
+ * l'utilisateur courant a bien le rôle 'admin' avant d'appeler cette fonction.
+ *
+ * Restrictions volontaires pour ne pas devenir un contournement générique du
+ * changement de mot de passe normal :
+ * - impossible de cibler son propre compte (utiliser changerMotDePasse() à la place) ;
+ * - la cible doit elle-même avoir le rôle 'admin'.
+ *
+ * @return array{succes: bool, message: string}
+ */
+function reinitialiserMotDePasseAdmin(int $idAdminCourant, int $idCible, string $nouveau, string $confirme): array
+{
+    if ($idCible === $idAdminCourant) {
+        return ['succes' => false, 'message' => "Utilisez le champ « Mon mot de passe » pour votre propre compte."];
+    }
+
+    $pdo  = getDB();
+    $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+    $stmt->execute([$idCible]);
+    $cible = $stmt->fetch();
+
+    if (!$cible) {
+        return ['succes' => false, 'message' => "Compte introuvable."];
+    }
+    if (($cible['role'] ?? '') !== 'admin') {
+        return ['succes' => false, 'message' => "Seul le mot de passe d'un autre compte administrateur peut être réinitialisé de cette façon."];
+    }
+    if (mb_strlen($nouveau) < 8) {
+        return ['succes' => false, 'message' => "Le nouveau mot de passe doit contenir au moins 8 caractères."];
+    }
+    if ($nouveau !== $confirme) {
+        return ['succes' => false, 'message' => "La confirmation ne correspond pas au nouveau mot de passe."];
+    }
+
+    $hash = password_hash($nouveau, PASSWORD_DEFAULT);
+    $pdo->prepare("UPDATE users SET mot_de_passe = ? WHERE id = ?")->execute([$hash, $idCible]);
+
+    return ['succes' => true, 'message' => "Mot de passe de « {$cible['nom']} » réinitialisé avec succès."];
+}
+
 // ── Protection anti brute-force (stockée en base, indépendante de la session) ──
 //
 // Auparavant, le compteur d'échecs vivait dans $_SESSION : il suffisait de
