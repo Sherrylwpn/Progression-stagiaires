@@ -66,3 +66,6 @@ INSERT INTO `badge` (`nom`) VALUES
 INSERT INTO `users` (`nom`, `mot_de_passe`, `role`, `actif`, `mode_sombre`) VALUES
   ('Romain', '$2y$10$79AjECvTuxkXq60Hvt5SHuuIWpf9CfTto5PJNRmcla9eKlcwCzA9i', 'admin', 1, 0);
   ('Valérie', '$2y$10$79AjECvTuxkXq60Hvt5SHuuIWpf9CfTto5PJNRmcla9eKlcwCzA9i', 'admin', 1, 0);
+
+ALTER TABLE stage ADD COLUMN archive TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE stage ADD COLUMN archive_manuel TINYINT(1) NOT NULL DEFAULT 0;
