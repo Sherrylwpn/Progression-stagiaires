@@ -348,3 +348,154 @@ function secondesAvantDeverrouillage(string $identifiant, string $adresseIp): in
     $finVerrou = strtotime($ligne['date_tentative']) + 5; // 5 secondes
     return max(0, $finVerrou - time());
 }
+
+// ── Évolution des compétences / badges / notation (graphiques) ──
+
+/**
+ * Calcule, pour un stage donné, l'évolution de chaque compétence technique,
+ * humaine, badge et de la note globale au fil des séances d'évaluation
+ * successives — mais ne conserve QUE les items dont le niveau a réellement
+ * varié entre au moins deux séances (une compétence toujours notée pareil
+ * n'apporte rien à représenter sous forme de courbe).
+ *
+ * Factorisée ici car utilisée à la fois par evolution.php (page dédiée) et par
+ * formulaire_stagiaires.php (graphiques inclus dans la fiche imprimable), pour
+ * éviter que les deux implémentations ne divergent au fil des correctifs.
+ *
+ * @return array{
+ *   labels: string[],
+ *   technique: array<int, array{nom: string, valeurs: array<int, int|null>}>,
+ *   humaine: array<int, array{nom: string, valeurs: array<int, int|null>}>,
+ *   badge: array<int, array{nom: string, valeurs: array<int, int|null>}>,
+ *   note: array<int, float|null>
+ * }
+ */
+function calculerEvolutionStage(PDO $pdo, int $idStage, array $nomsTech, array $nomsHumaine, array $nomsBadge): array
+{
+    $stmtSeances = $pdo->prepare(
+        "SELECT id_evaluation, date_evaluation, note FROM evaluation WHERE id_stage = ? ORDER BY date_evaluation ASC, id_evaluation ASC"
+    );
+    $stmtSeances->execute([$idStage]);
+    $seances    = $stmtSeances->fetchAll();
+    $idsSeances = array_column($seances, 'id_evaluation');
+    $labels = array_map(
+        fn($s) => $s['date_evaluation'] ? date('d/m/Y', strtotime($s['date_evaluation'])) : '—',
+        $seances
+    );
+
+    /**
+     * Construit, pour une table de niveaux donnée, la liste des items dont le
+     * niveau a varié entre au moins deux séances, chacun avec sa série de
+     * valeurs alignée sur $idsSeances (null = non noté lors de cette
+     * séance-là, pour que la courbe laisse un trou plutôt que de redescendre
+     * artificiellement à zéro).
+     */
+    $construireGroupe = function (string $table, string $colonneId, array $noms) use ($pdo, $idsSeances): array {
+        if (empty($idsSeances)) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($idsSeances), '?'));
+        $stmt = $pdo->prepare("SELECT id_evaluation, {$colonneId} AS id_item, niveau FROM {$table} WHERE id_evaluation IN ({$placeholders})");
+        $stmt->execute($idsSeances);
+
+        $parItem = [];
+        foreach ($stmt->fetchAll() as $ligne) {
+            $parItem[(int) $ligne['id_item']][(int) $ligne['id_evaluation']] = (int) $ligne['niveau'];
+        }
+
+        $resultat = [];
+        foreach ($parItem as $idItem => $valeursParSeance) {
+            $valeursUniques = array_unique(array_values($valeursParSeance));
+            if (count($valeursParSeance) < 2 || count($valeursUniques) < 2) {
+                continue; // pas assez de points, ou toujours la même note : on n'affiche pas
+            }
+            $serie = [];
+            foreach ($idsSeances as $idSeance) {
+                $serie[] = $valeursParSeance[$idSeance] ?? null;
+            }
+            $resultat[] = ['nom' => $noms[$idItem] ?? ('Compétence #' . $idItem), 'valeurs' => $serie];
+        }
+        return $resultat;
+    };
+
+    $technique = $construireGroupe('evaluation_competence_technique', 'id_competence_technique', $nomsTech);
+    $humaine   = $construireGroupe('evaluation_competence_humaine', 'id_competence_humaine', $nomsHumaine);
+    $badge     = $construireGroupe('evaluation_badge', 'id_badge', $nomsBadge);
+
+    // Note globale : même principe, on ne la trace que si elle a varié.
+    $valeursNote  = array_column($seances, 'note');
+    $notesConnues = array_filter($valeursNote, fn($v) => $v !== null);
+    $note = (count(array_unique($notesConnues)) >= 2)
+        ? array_map(fn($v) => $v !== null ? (float) $v : null, $valeursNote)
+        : [];
+
+    return [
+        'labels'    => $labels,
+        'technique' => $technique,
+        'humaine'   => $humaine,
+        'badge'     => $badge,
+        'note'      => $note,
+    ];
+}
+
+// ── Archivage des stages ──
+//
+// Un stage archivé n'apparaît plus dans la liste principale (index.php) mais
+// reste consultable/désarchivable depuis archive.php. Deux façons d'y arriver :
+// automatique (toute année de stage déjà révolue), ou manuelle (bouton
+// "Archiver" sur la fiche, quelle que soit l'année).
+//
+// ⚠️ Nécessite deux colonnes sur la table `stage` (absentes par défaut) :
+//     ALTER TABLE stage ADD COLUMN archive TINYINT(1) NOT NULL DEFAULT 0;
+//     ALTER TABLE stage ADD COLUMN archive_manuel TINYINT(1) NOT NULL DEFAULT 0;
+// À exécuter une seule fois (phpMyAdmin, ou tout client SQL) avant la première
+// utilisation de ces fonctions.
+//
+// `archive_manuel` sert à empêcher un piège sinon inévitable : sans lui, un
+// stage d'une année révolue qu'on désarchive à la main se ferait ré-archiver
+// tout seul dès le prochain chargement de page (le balayage automatique ne
+// fait aucune différence entre "jamais archivé" et "désarchivé exprès"). Ce
+// drapeau, posé à chaque action manuelle (archiver OU désarchiver), indique
+// "un humain a déjà décidé pour ce stage" : le balayage automatique ignore
+// alors ces lignes et n'agit plus que sur les stages jamais touchés.
+
+/**
+ * Archive automatiquement tous les stages dont l'année de la date de début est
+ * déjà révolue (strictement antérieure à l'année en cours), qui ne sont pas
+ * déjà archivés, ET que personne n'a désarchivés manuellement entre-temps
+ * (cf. `archive_manuel` ci-dessus). Ex. : en 2027, un stage débuté en 2025 ou
+ * 2026 est archivé ; un stage débuté en 2027 (l'année en cours) ne l'est pas
+ * encore.
+ *
+ * Appelée à chaque chargement de index.php et archive.php : une simple requête
+ * UPDATE, assez légère pour ne pas nécessiter de tâche planifiée (cron).
+ */
+function archiverAnneesRevolues(PDO $pdo): void
+{
+    $anneeCourante = (int) date('Y');
+    $pdo->prepare(
+        "UPDATE stage SET archive = 1
+         WHERE archive = 0 AND archive_manuel = 0 AND YEAR(date_debut) < :annee"
+    )->execute([':annee' => $anneeCourante]);
+}
+
+/**
+ * Archive manuellement un stage précis, quelle que soit son année (bouton
+ * "Archiver" de la fiche détaillée).
+ */
+function archiverStage(PDO $pdo, int $idStage): void
+{
+    $pdo->prepare("UPDATE stage SET archive = 1, archive_manuel = 1 WHERE id_stage = ?")->execute([$idStage]);
+}
+
+/**
+ * Retire un stage de l'archive (bouton "Désarchiver" de archive.php) : il
+ * réapparaît dans la liste principale de index.php. Marqué `archive_manuel`
+ * pour ne pas se faire ré-archiver tout seul au prochain balayage automatique
+ * si son année est déjà révolue (cf. explication en tête de section).
+ */
+function desarchiverStage(PDO $pdo, int $idStage): void
+{
+    $pdo->prepare("UPDATE stage SET archive = 0, archive_manuel = 1 WHERE id_stage = ?")->execute([$idStage]);
+}

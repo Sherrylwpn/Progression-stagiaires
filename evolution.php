@@ -45,69 +45,14 @@ $nomsBadge   = array_column($badges, 'nom', 'id_badge');
 // On trace ici l'évolution de chaque compétence / badge PRIS INDIVIDUELLEMENT,
 // mais on ne garde que ceux dont le niveau a réellement varié au fil des
 // séances : une compétence toujours notée pareil n'apporte rien à afficher.
-$labelsSeances      = [];
-$evolutionTechnique = [];
-$evolutionHumaine   = [];
-$evolutionBadge     = [];
-$evolutionNote      = [];
-
-$stmtSeances = $pdo->prepare(
-    "SELECT id_evaluation, date_evaluation, note FROM evaluation WHERE id_stage = ? ORDER BY date_evaluation ASC, id_evaluation ASC"
-);
-$stmtSeances->execute([$idStage]);
-$seances    = $stmtSeances->fetchAll();
-$idsSeances = array_column($seances, 'id_evaluation');
-$labelsSeances = array_map(
-    fn($s) => $s['date_evaluation'] ? date('d/m/Y', strtotime($s['date_evaluation'])) : '—',
-    $seances
-);
-
-/**
- * Construit, pour une table de niveaux donnée (technique / humaine / badge),
- * la liste des items dont le niveau a varié entre au moins deux séances,
- * chacun avec sa série de valeurs alignée sur $idsSeances (null = non noté
- * lors de cette séance-là, pour que la courbe laisse un trou plutôt que de
- * redescendre artificiellement à zéro).
- */
-$construireEvolution = function (string $table, string $colonneId, array $noms) use ($pdo, $idsSeances): array {
-    if (empty($idsSeances)) {
-        return [];
-    }
-
-    $placeholders = implode(',', array_fill(0, count($idsSeances), '?'));
-    $stmt = $pdo->prepare("SELECT id_evaluation, {$colonneId} AS id_item, niveau FROM {$table} WHERE id_evaluation IN ({$placeholders})");
-    $stmt->execute($idsSeances);
-
-    $parItem = [];
-    foreach ($stmt->fetchAll() as $ligne) {
-        $parItem[(int) $ligne['id_item']][(int) $ligne['id_evaluation']] = (int) $ligne['niveau'];
-    }
-
-    $resultat = [];
-    foreach ($parItem as $idItem => $valeursParSeance) {
-        $valeursUniques = array_unique(array_values($valeursParSeance));
-        if (count($valeursParSeance) < 2 || count($valeursUniques) < 2) {
-            continue; // pas assez de points, ou toujours la même note : on n'affiche pas
-        }
-        $serie = [];
-        foreach ($idsSeances as $idSeance) {
-            $serie[] = $valeursParSeance[$idSeance] ?? null;
-        }
-        $resultat[] = ['nom' => $noms[$idItem] ?? ('Compétence #' . $idItem), 'valeurs' => $serie];
-    }
-    return $resultat;
-};
-
-$evolutionTechnique = $construireEvolution('evaluation_competence_technique', 'id_competence_technique', $nomsTech);
-$evolutionHumaine   = $construireEvolution('evaluation_competence_humaine', 'id_competence_humaine', $nomsHumaine);
-$evolutionBadge     = $construireEvolution('evaluation_badge', 'id_badge', $nomsBadge);
-
-// Note globale : même principe, on ne la trace que si elle a varié.
-$valeursNote  = array_column($seances, 'note');
-$notesConnues = array_filter($valeursNote, fn($v) => $v !== null);
-if (count(array_unique($notesConnues)) >= 2) {
-    $evolutionNote = array_map(fn($v) => $v !== null ? (float) $v : null, $valeursNote);
-}
+// Logique factorisée dans config.php (calculerEvolutionStage), réutilisée
+// telle quelle par la fiche imprimable de formulaire_stagiaires.php.
+$evolution           = calculerEvolutionStage($pdo, $idStage, $nomsTech, $nomsHumaine, $nomsBadge);
+$labelsSeances       = $evolution['labels'];
+$evolutionTechnique  = $evolution['technique'];
+$evolutionHumaine    = $evolution['humaine'];
+$evolutionBadge      = $evolution['badge'];
+$evolutionNote       = $evolution['note'];
 
 $aQuelqueChoseAAfficher = !empty($evolutionTechnique) || !empty($evolutionHumaine) || !empty($evolutionBadge) || !empty($evolutionNote);
 $aucuneSeance = empty($seances);

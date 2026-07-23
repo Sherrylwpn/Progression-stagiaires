@@ -946,17 +946,22 @@ button.menu-popup-item {
   transform: translateX(-50%) translateY(0);
 }
 
-/* ── Actions Modifier / Supprimer dans la fiche stagiaire ── */
+/* ── Actions Modifier / Évolution / Archiver / Supprimer dans la fiche stagiaire ── */
 .fiche-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 28px;
   padding-top: 20px;
   border-top: 1px solid var(--color-border);
 }
 
+.fiche-actions form {
+  flex: 1 1 45%;
+}
+
 .fiche-btn {
-  flex: 1;
+  flex: 1 1 45%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -987,6 +992,15 @@ button.menu-popup-item {
 
 .fiche-btn-evolution:hover {
   background-color: #f2e3c2;
+}
+
+.fiche-btn-archive {
+  background-color: #ece7ee;
+  color: var(--color-text-muted);
+}
+
+.fiche-btn-archive:hover {
+  background-color: #ddd6e2;
 }
 
 .fiche-btn-delete {

@@ -246,6 +246,129 @@ $libellesGroupe = [
       font-weight: normal;
       color: var(--color-text-muted);
     }
+
+    /* ── Tableau du suivi des actions ── */
+    /* Ces styles n'existaient nulle part ailleurs (probablement prévus dans
+       parametres.css, absent) : la table était déjà générée correctement en
+       PHP (afficherTableauSuivi), simplement sans aucune bordure ni mise en
+       forme, ce qui la faisait ressembler à de simples colonnes de texte. */
+    .historique-table {
+      width: 100%;
+      border-collapse: collapse;
+      background-color: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      font-size: 13.5px;
+    }
+
+    .historique-table th,
+    .historique-table td {
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--color-border);
+      vertical-align: top;
+    }
+
+    .historique-table thead th {
+      background-color: var(--color-primary-tint);
+      color: var(--color-primary);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      border-bottom: 1px solid var(--color-border);
+      white-space: nowrap;
+    }
+
+    .historique-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .historique-table tbody tr:hover {
+      background-color: var(--color-primary-tint);
+    }
+
+    /* ── Tags d'action (Ajout / Modification / Suppression), variantes de .tag ── */
+    .action-creation {
+      background-color: var(--color-success-bg);
+      color: var(--color-success-text);
+    }
+
+    .action-modification {
+      background-color: var(--color-primary-tint);
+      color: var(--color-primary);
+    }
+
+    .action-suppression {
+      background-color: var(--color-danger-bg);
+      color: var(--color-danger-text);
+    }
+
+    /* ── Pagination de la vue générale ── */
+    .pagination {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 20px;
+    }
+
+    .pagination-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 34px;
+      height: 34px;
+      padding: 0 8px;
+      border-radius: var(--radius-sm);
+      background-color: var(--color-surface);
+      border: 1px solid var(--color-border);
+      color: var(--color-text);
+      font-size: 13.5px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background-color 0.15s, border-color 0.15s;
+    }
+
+    .pagination-link:hover {
+      background-color: var(--color-primary-tint);
+      border-color: var(--color-primary-light);
+    }
+
+    .pagination-link.active {
+      background-color: var(--color-primary);
+      border-color: var(--color-primary);
+      color: #fff;
+    }
+
+    body.dark-mode .historique-table {
+      background-color: #241a2d;
+      border-color: #392c46;
+    }
+
+    body.dark-mode .historique-table th,
+    body.dark-mode .historique-table td {
+      border-color: #392c46;
+    }
+
+    body.dark-mode .historique-table thead th {
+      background-color: #382c40;
+      color: #d8cfe0;
+    }
+
+    body.dark-mode .historique-table tbody tr:hover {
+      background-color: #382c40;
+    }
+
+    body.dark-mode .pagination-link {
+      background-color: #241a2d;
+      border-color: #392c46;
+      color: #e9e2ee;
+    }
+
+    body.dark-mode .pagination-link:hover {
+      background-color: #382c40;
+    }
   </style>
 </head>
 <body class="<?= bodyClass() ?>">

@@ -507,6 +507,20 @@ if ($idEdition) {
     $aDesEvaluations = (bool) $stmt->fetchColumn();
 }
 
+// ── Données pour la fiche imprimable (bouton "Imprimer") ──
+// On réutilise exactement la même fonction que evolution.php (factorisée dans
+// config.php) pour que les courbes imprimées soient identiques à celles
+// consultables à l'écran.
+$evolutionImpression = $idEdition
+    ? calculerEvolutionStage($pdo, $idEdition, $nomsTech, $nomsHumaine, $nomsBadge)
+    : null;
+$aDesGraphiquesAImprimer = $evolutionImpression && (
+    !empty($evolutionImpression['technique'])
+    || !empty($evolutionImpression['humaine'])
+    || !empty($evolutionImpression['badge'])
+    || !empty($evolutionImpression['note'])
+);
+
 /**
  * Génère un groupe d'étoiles SVG interactives. Cliquer sur une étoile déjà
  * sélectionnée l'efface (retour à "non évalué"), et son input caché est envoyé
@@ -537,6 +551,12 @@ function renderStarInput(string $name, int $max, int $value): string
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><?= $idEdition ? 'Modifier le stagiaire' : 'Nouveau stagiaire' ?></title>
   <link rel="stylesheet" href="style.css">
+  <?php if ($aDesGraphiquesAImprimer): ?>
+  <!-- Chart.js n'est chargé que si la fiche imprimable aura au moins un graphique
+       à afficher (mêmes conditions que dans evolution.php). Fichier hébergé en
+       local (chart.min.js, à la racine du site) : pas de dépendance à un CDN. -->
+  <script src="chart.min.js"></script>
+  <?php endif; ?>
 </head>
 <body class="<?= bodyClass() ?>">
   <div id="toast" class="toast"></div>
@@ -680,6 +700,9 @@ function renderStarInput(string $name, int $max, int $value): string
             <?php if ($idEdition && $aDesEvaluations): ?>
               <a href="evolution.php?id=<?= (int) $idEdition ?>" class="submit-btn submit-btn-secondary">Voir l'évolution</a>
             <?php endif; ?>
+            <?php if ($idEdition): ?>
+              <button type="button" id="btnImprimerFiche" class="submit-btn submit-btn-secondary">🖨️ Imprimer la fiche du stagiaire</button>
+            <?php endif; ?>
             <button type="submit" form="ficheForm" class="submit-btn">
               <?= $idEdition ? 'Enregistrer les modifications' : 'Enregistrer le stagiaire' ?>
             </button>
@@ -688,6 +711,94 @@ function renderStarInput(string $name, int $max, int $value): string
 
       </div>
     </form>
+
+    <?php if ($idEdition): ?>
+    <?php
+      // ═══════════════════════════════════════════════════════════════
+      // SECTION IMPRIMABLE — jamais visible à l'écran (voir .print-only
+      // dans style.css), seulement au moment de l'impression. Construite à
+      // partir des mêmes données que le formulaire ci-dessus (informations
+      // générales, niveaux actuels, commentaire) et des mêmes graphiques
+      // d'évolution que evolution.php.
+      // ═══════════════════════════════════════════════════════════════
+      $nomClasseImpression        = $nomsClasse[$stagiaireData['id_classe'] ?? 0] ?? '—';
+      $nomEtablissementImpression = $nomsEtablissement[$stagiaireData['id_etablissement'] ?? 0] ?? '—';
+      $formatDateImpression = fn($d) => $d ? (new DateTime($d))->format('d/m/Y') : '—';
+    ?>
+    <div class="print-only" id="printArea">
+      <header class="print-header">
+        <h1>Fiche de suivi — Stagiaire</h1>
+        <p class="print-date">Document généré le <?= htmlspecialchars((new DateTime())->format('d/m/Y')) ?></p>
+      </header>
+
+      <section class="print-section">
+        <h2>Informations générales</h2>
+        <table class="print-table">
+          <tr><th>Nom</th><td><?= htmlspecialchars($stagiaireData['nom'] ?? '') ?></td>
+              <th>Prénom</th><td><?= htmlspecialchars($stagiaireData['prenom'] ?? '') ?></td></tr>
+          <tr><th>Classe</th><td><?= htmlspecialchars($nomClasseImpression) ?></td>
+              <th>Établissement</th><td><?= htmlspecialchars($nomEtablissementImpression) ?></td></tr>
+          <tr><th>Période du stage</th>
+              <td colspan="3"><?= htmlspecialchars($formatDateImpression($stagiaireData['date_debut'] ?? null)) ?> au <?= htmlspecialchars($formatDateImpression($stagiaireData['date_fin'] ?? null)) ?></td></tr>
+          <?php if ($noteExistante !== null && $noteExistante !== ''): ?>
+          <tr><th>Notation globale</th><td colspan="3"><?= htmlspecialchars((string) $noteExistante) ?> / 20</td></tr>
+          <?php endif; ?>
+        </table>
+      </section>
+
+      <?php if (!empty($notesTechExistantes) || !empty($notesHumaineExistantes)): ?>
+      <div class="print-competences-grid">
+        <?php if (!empty($notesTechExistantes)): ?>
+        <section class="print-section">
+          <h2>Compétences techniques évaluées</h2>
+          <table class="print-table print-table-competences">
+            <thead><tr><th>Compétence</th><th>Niveau</th></tr></thead>
+            <tbody>
+              <?php foreach ($notesTechExistantes as $id => $niveau): ?>
+                <tr><td><?= htmlspecialchars($nomsTech[$id] ?? ('#' . $id)) ?></td><td><?= (int) $niveau ?> / 3</td></tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </section>
+        <?php endif; ?>
+
+        <?php if (!empty($notesHumaineExistantes)): ?>
+        <section class="print-section">
+          <h2>Compétences humaines évaluées</h2>
+          <table class="print-table print-table-competences">
+            <thead><tr><th>Compétence</th><th>Niveau</th></tr></thead>
+            <tbody>
+              <?php foreach ($notesHumaineExistantes as $id => $niveau): ?>
+                <tr><td><?= htmlspecialchars($nomsHumaine[$id] ?? ('#' . $id)) ?></td><td><?= (int) $niveau ?> / 5</td></tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </section>
+        <?php endif; ?>
+      </div>
+      <?php endif; ?>
+
+      <?php if (!empty($notesBadgeExistantes)): ?>
+      <section class="print-section">
+        <h2>Badges obtenus</h2>
+        <div class="print-badges">
+          <?php foreach ($notesBadgeExistantes as $id => $niveau): ?>
+            <span class="print-badge">🏅 <?= htmlspecialchars($nomsBadge[$id] ?? ('#' . $id)) ?> <small>(<?= (int) $niveau ?>/3)</small></span>
+          <?php endforeach; ?>
+        </div>
+      </section>
+      <?php endif; ?>
+
+      <?php if (!empty($commentaireExistant)): ?>
+      <section class="print-section">
+        <h2>Commentaire de l'évaluateur</h2>
+        <p class="print-commentaire"><?= nl2br(htmlspecialchars($commentaireExistant)) ?></p>
+      </section>
+      <?php endif; ?>
+
+
+      <?php endif; ?>
+    </div>
   </main>
 
   <script>
@@ -758,6 +869,99 @@ function renderStarInput(string $name, int $max, int $value): string
 
       paint(currentRating);
     });
+
+    <?php if ($aDesGraphiquesAImprimer): ?>
+    // ── Graphiques de la fiche imprimable ──
+    // Rendus une fois au chargement de la page, dans des <canvas> de taille
+    // FIXE (responsive: false) : contrairement aux graphiques d'evolution.php,
+    // ceux-ci ne sont jamais affichés à l'écran (cf. .print-chart-canvas dans
+    // style.css), ils servent uniquement de source pour générer les images
+    // insérées dans la fiche au moment de l'impression (cf. plus bas).
+    (function() {
+      if (typeof Chart === 'undefined') return;
+
+      const labels = <?= json_encode($labelsSeances ?? []) ?>;
+      const palette = ['#3d1550', '#b8862e', '#2f8f45', '#6a2f86', '#d9573f', '#1f6b8f', '#8a5aa8', '#c9a227'];
+
+      function tracer(idCanvas, items, max, suffixe) {
+        const canvas = document.getElementById(idCanvas);
+        if (!canvas || !items || items.length === 0) return;
+        const ctx = canvas.getContext('2d');
+
+        const datasets = items.map(function(item, i) {
+          const couleur = palette[i % palette.length];
+          return {
+            label: item.nom,
+            data: item.valeurs,
+            borderColor: couleur,
+            backgroundColor: couleur + '22',
+            spanGaps: true,
+            tension: 0.35,
+            fill: items.length === 1,
+            borderWidth: 2.5,
+            pointBackgroundColor: couleur,
+            pointBorderColor: '#fff',
+            pointBorderWidth: 1.5,
+            pointRadius: 4,
+          };
+        });
+
+        new Chart(canvas, {
+          type: 'line',
+          data: { labels: labels, datasets: datasets },
+          options: {
+            responsive: false, // taille fixe (width/height du <canvas>), indépendante de l'affichage écran
+            animation: false,  // rendu immédiat : le canvas doit être prêt dès le chargement de la page
+            scales: {
+              y: { min: 0, max: max, ticks: { stepSize: max <= 5 ? 1 : 5 } }
+            },
+            plugins: {
+              legend: { display: datasets.length > 1, position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } }
+            }
+          }
+        });
+      }
+
+      <?php if (!empty($evolutionImpression['note'])): ?>
+      tracer('printChartNote', [{ nom: 'Note globale', valeurs: <?= json_encode($evolutionImpression['note']) ?> }], 20, '/20');
+      <?php endif; ?>
+      <?php if (!empty($evolutionImpression['technique'])): ?>
+      tracer('printChartTech', <?= json_encode(array_map(fn($i) => ['nom' => $i['nom'], 'valeurs' => $i['valeurs']], $evolutionImpression['technique'])) ?>, 3, '/3');
+      <?php endif; ?>
+      <?php if (!empty($evolutionImpression['humaine'])): ?>
+      tracer('printChartHumaine', <?= json_encode(array_map(fn($i) => ['nom' => $i['nom'], 'valeurs' => $i['valeurs']], $evolutionImpression['humaine'])) ?>, 5, '/5');
+      <?php endif; ?>
+      <?php if (!empty($evolutionImpression['badge'])): ?>
+      tracer('printChartBadge', <?= json_encode(array_map(fn($i) => ['nom' => $i['nom'], 'valeurs' => $i['valeurs']], $evolutionImpression['badge'])) ?>, 3, '/3');
+      <?php endif; ?>
+    })();
+    <?php endif; ?>
+
+    <?php if ($idEdition): ?>
+    // ── Bouton "Imprimer la fiche du stagiaire" ──
+    (function() {
+      const btn = document.getElementById('btnImprimerFiche');
+      if (!btn) return;
+
+      btn.addEventListener('click', function() {
+        // Convertit chaque graphique (canvas, jamais affiché à l'écran) en image
+        // PNG et l'insère dans la fiche imprimable : c'est l'image qui sera
+        // effectivement imprimée (cf. règles @media print de style.css qui
+        // masquent le <canvas> et affichent le <img> uniquement à l'impression).
+        // Cette conversion évite les soucis de rendu de <canvas> propres à
+        // certains navigateurs/imprimantes lors de l'impression directe.
+        document.querySelectorAll('#printArea .print-chart-block').forEach(function(bloc) {
+          const canvas = bloc.querySelector('canvas.print-chart-canvas');
+          const img = bloc.querySelector('img.print-chart-img');
+          if (canvas && img) {
+            img.src = canvas.toDataURL('image/png');
+          }
+        });
+
+        window.print();
+      });
+    })();
+    <?php endif; ?>
 
     <?php if ($succes !== ''): ?>
     // Affiche un petit popup de confirmation

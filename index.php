@@ -4,6 +4,10 @@ requireAuth(); // Correction 3.3 : la liste des stagiaires ne doit pas être con
 
 $pdo = getDB();
 
+// Archive automatiquement les stages dont l'année est déjà révolue (cf. config.php) :
+// exécuté à chaque chargement de l'accueil, avant de lister les stages actifs.
+archiverAnneesRevolues($pdo);
+
 // ── Liste des stages (chaque carte = un stage, cf. correction 3.4) avec la dernière
 //    évaluation connue (note globale + nombre de critères déjà notés lors de cette séance) ──
 $stagiaires = $pdo->query("
@@ -40,6 +44,7 @@ $stagiaires = $pdo->query("
     )
     GROUP BY ev.id_stage
   ) cnt ON cnt.id_stage = st.id_stage
+  WHERE st.archive = 0
   ORDER BY s.nom, s.prenom
 ")->fetchAll();
 
@@ -127,7 +132,8 @@ if (($_SESSION['role'] ?? '') === 'admin') {
     </div>
 
     <a href="index.php" class="menu-popup-item">Accueil</a>
-    <a href="suivi_modifications.php" class="menu-popup-item">Suivi des modifications</a>
+    <a href="archive.php" class="menu-popup-item">Archives</a>
+    <a href="suivi_modifications.php" class="menu-popup-item">Suivi des actions</a>
     <button type="button" class="menu-popup-item" id="securityMenuBtn">Sécurité du compte</button>
     <button type="button" class="menu-popup-item" id="displayMenuBtn">Affichage</button>
     <!-- Correction 3.14 : déconnexion en POST + CSRF plutôt qu'un simple lien GET
@@ -804,6 +810,19 @@ if (($_SESSION['role'] ?? '') === 'admin') {
         toast.classList.remove('show');
       }, 2500);
       // Nettoie l'URL pour éviter que le message ne réapparaisse au rechargement
+      window.history.replaceState({}, document.title, 'index.php');
+    })();
+    <?php endif; ?>
+
+    <?php if (isset($_GET['archive'])): ?>
+    // Petit popup de confirmation après archivage manuel d'un stagiaire
+    (function() {
+      const toast = document.getElementById('toast');
+      toast.textContent = 'Stagiaire archivé avec succès.';
+      toast.classList.add('show');
+      setTimeout(function() {
+        toast.classList.remove('show');
+      }, 2500);
       window.history.replaceState({}, document.title, 'index.php');
     })();
     <?php endif; ?>

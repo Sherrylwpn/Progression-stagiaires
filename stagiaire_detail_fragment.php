@@ -217,7 +217,13 @@ $initiales = mb_strtoupper(mb_substr($stage['prenom'], 0, 1) . mb_substr($stage[
 <div class="fiche-actions">
   <a href="formulaire_stagiaires.php?id=<?= (int) $stage['id_stage'] ?>" class="fiche-btn fiche-btn-edit">Modifier / nouvelle évaluation</a>
   <a href="evolution.php?id=<?= (int) $stage['id_stage'] ?>" class="fiche-btn fiche-btn-evolution">Voir l'évolution</a>
-  <form method="POST" action="delete_stagiaire.php" onsubmit="return confirm('Supprimer définitivement ce stage et toutes ses évaluations ?');" style="flex:1;">
+  <form method="POST" action="archiver_stagiaire.php" onsubmit="return confirm('Archiver ce stagiaire ? Il n\'apparaîtra plus dans la liste principale, mais restera consultable depuis les Archives.');">
+    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+    <input type="hidden" name="id" value="<?= (int) $stage['id_stage'] ?>">
+    <input type="hidden" name="action" value="archiver">
+    <button type="submit" class="fiche-btn fiche-btn-archive" style="width:100%;">Archiver</button>
+  </form>
+  <form method="POST" action="delete_stagiaire.php" onsubmit="return confirm('Supprimer définitivement ce stage et toutes ses évaluations ?');">
     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
     <input type="hidden" name="id" value="<?= (int) $stage['id_stage'] ?>">
     <button type="submit" class="fiche-btn fiche-btn-delete" style="width:100%;">Supprimer</button>

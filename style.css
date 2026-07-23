@@ -422,3 +422,192 @@ body.dark-mode .evolution-chart-title {
 body.dark-mode .evolution-chart-title span {
   color: #b4a6c2;
 }
+
+/* ══════════════════════════════════════════════
+   Fiche imprimable (bouton "Imprimer" de formulaire_stagiaires.php)
+   Invisible à l'écran, affichée uniquement à l'impression (@media print).
+   ══════════════════════════════════════════════ */
+.print-only {
+  display: none;
+}
+
+/* Les graphiques d'impression sont des canvas Chart.js utilisés uniquement
+   comme source pour générer une image (toDataURL) : jamais montrés à l'écran,
+   ni même à l'impression (c'est l'<img> généré à partir d'eux qui s'affiche). */
+.print-chart-canvas {
+  display: none;
+}
+
+.print-chart-img {
+  display: none;
+  max-width: 100%;
+}
+
+@media print {
+  /* On masque uniquement les éléments concernés (toast, header, formulaire),
+     plutôt que "tout le body en visibility:hidden + .print-only en
+     position:absolute" : cette dernière technique, plus courante, casse la
+     pagination sur plusieurs pages dans certains moteurs de rendu (le
+     contenu qui dépasse la 1ère page peut être purement et simplement coupé,
+     invisible). En gardant .print-only dans le flux normal du document (pas
+     de position:absolute), l'impression multi-pages fonctionne correctement. */
+  #toast,
+  .header,
+  #ficheForm {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .print-chart-canvas {
+    display: none !important;
+  }
+
+  .print-chart-img {
+    display: block !important;
+  }
+
+  .content {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  body {
+    background: #fff;
+  }
+}
+
+.print-header {
+  text-align: center;
+  border-bottom: 2px solid var(--color-accent);
+  padding-bottom: 8px;
+  margin-bottom: 14px;
+}
+
+.print-header h1 {
+  font-family: var(--font-display);
+  font-size: 19px;
+  color: var(--color-primary);
+}
+
+.print-date {
+  font-size: 10.5px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.print-section {
+  margin-bottom: 14px;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.print-section h2 {
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: var(--color-primary);
+  border-bottom: 1px solid var(--color-accent-tint);
+  padding-bottom: 4px;
+  margin-bottom: 8px;
+}
+
+.print-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.print-table th,
+.print-table td {
+  border: 1px solid #d8cede;
+  padding: 4px 7px;
+  text-align: left;
+}
+
+.print-table th {
+  background-color: var(--color-primary-tint);
+  color: var(--color-primary);
+  font-weight: 600;
+  width: 18%;
+}
+
+.print-table-competences td:last-child {
+  width: 55px;
+  text-align: center;
+  font-weight: 600;
+}
+
+/* Compétences techniques + humaines côte à côte (2 colonnes) : la principale
+   économie de place sur la fiche imprimée, ces deux tableaux étant souvent
+   les plus longs. */
+.print-competences-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.print-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.print-badge {
+  background-color: var(--color-accent-tint);
+  color: var(--color-accent-dark);
+  border-radius: var(--radius-pill);
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.print-badge small {
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.print-commentaire {
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.print-section-charts .print-charts-note {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  margin-bottom: 8px;
+}
+
+/* Graphiques 2 par ligne (au lieu d'empilés) : jusqu'à 4 graphiques tiennent
+   ainsi sur 2 lignes plutôt que 4, ce qui économise beaucoup de hauteur. */
+.print-charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.print-chart-block {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.print-chart-block h3 {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin-bottom: 4px;
+}
+
+@media print {
+  .print-competences-grid,
+  .print-charts-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
