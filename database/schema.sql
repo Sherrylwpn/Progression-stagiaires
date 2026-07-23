@@ -63,6 +63,8 @@ CREATE TABLE `stage` (
   `id_etablissement` int(11) NOT NULL,
   `date_debut` date DEFAULT NULL,
   `date_fin` date DEFAULT NULL,
+  -- ──`archive` TINYINT(1) NOT NULL DEFAULT 0; ── "enlever les lignes 186 et 186, si première fois" ──
+  -- ──`archive_manuel` TINYINT(1) NOT NULL DEFAULT 0; ──
   PRIMARY KEY (`id_stage`),
   KEY `idx_stage_stagiaire` (`id_stagiaire`),
   CONSTRAINT `fk_stage_stagiaire` FOREIGN KEY (`id_stagiaire`) REFERENCES `stagiaire` (`id_stagiaire`) ON DELETE CASCADE,
@@ -180,3 +182,6 @@ CREATE TABLE `login_attempts` (
   KEY `idx_identifiant_date` (`identifiant`, `date_tentative`),
   KEY `idx_ip_date` (`adresse_ip`, `date_tentative`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+ALTER TABLE stage ADD COLUMN archive TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE stage ADD COLUMN archive_manuel TINYINT(1) NOT NULL DEFAULT 0;
