@@ -36,7 +36,7 @@ INSERT INTO `competence_technique` (`nom`) VALUES
   ('Déploiement réseau : FOG'),
   ('Rédaction technique'),
   ('Clavier Expert'),
-  ('Support utilisateur')
+  ('Support utilisateur'),
   ('Projet');
 
 -- ── Compétences humaines ──
@@ -46,7 +46,7 @@ INSERT INTO `competence_humaine` (`nom`) VALUES
   ('Ponctualité'),
   ('Travail en équipe'),
   ('Ecoute active'),
-  ('Curiosité professionnelle');
+  ('Curiosité professionnelle'),
   ('Téléphone : prise note & transmission claire'),
   ('Gestion du temps'),
   ('Politesse'),
@@ -56,7 +56,7 @@ INSERT INTO `competence_humaine` (`nom`) VALUES
 INSERT INTO `badge` (`nom`) VALUES
   ('Gestion'),
   ('Maintenance'),
-  ('Technicien')
+  ('Technicien'),
   ('Clavier'),
   ('Support & GLPI'),
   ('Réseau & Infrastructure'),
@@ -64,6 +64,7 @@ INSERT INTO `badge` (`nom`) VALUES
 
 -- ── Compte administrateur initial .
 INSERT INTO `users` (`nom`, `mot_de_passe`, `role`, `actif`, `mode_sombre`) VALUES
-  ('Romain', '$2y$10$79AjECvTuxkXq60Hvt5SHuuIWpf9CfTto5PJNRmcla9eKlcwCzA9i', 'admin', 1, 0);
-  ('Valérie', '$2y$10$79AjECvTuxkXq60Hvt5SHuuIWpf9CfTto5PJNRmcla9eKlcwCzA9i', 'admin', 1, 0);
+  ('Romain', '$2y$10$vZwL7h5n9cmsTRHvafoclexaU6PG2t1vlx0kgcfJKVqI8dRzGQR8a', 'admin', 1, 0);
+  ('Valérie', '$2y$10$vZwL7h5n9cmsTRHvafoclexaU6PG2t1vlx0kgcfJKVqI8dRzGQR8a', 'admin', 1, 0);
+  ('Shex', '$2y$10$vZwL7h5n9cmsTRHvafoclexaU6PG2t1vlx0kgcfJKVqI8dRzGQR8a', 'admin', 1, 0);
 
