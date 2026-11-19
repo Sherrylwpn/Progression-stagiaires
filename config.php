@@ -16,7 +16,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 // ── Paramètres de connexion à la base de données ──
 define('DB_HOST', 'localhost');
-define('DB_PORT', '3307');
+define('DB_PORT', '3306');
 define('DB_NAME', 'staginf');
 define('DB_USER', 'root');
 define('DB_PASS', ''); // vide par défaut sous XAMPP
